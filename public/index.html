@@ -2,12 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StarryWeb Fullstack</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StarryWeb Directory</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-
   <header>
     <nav class="navbar">
       <div class="logo">⭐ StarryWeb</div>
@@ -49,8 +48,8 @@
   <section id="contact" class="contact">
     <h2>Contact Us</h2>
     <form id="contact-form">
-      <input type="text" name="name" placeholder="Your Name" required />
-      <input type="email" name="email" placeholder="Your Email" required />
+      <input type="text" name="name" placeholder="Your Name" required/>
+      <input type="email" name="email" placeholder="Your Email" required/>
       <textarea name="message" placeholder="Your Message" required></textarea>
       <button type="submit">Send</button>
     </form>
@@ -58,15 +57,50 @@
   </section>
 
   <section id="data-section" class="data-section">
-    <h2>📁 From Our Files</h2>
-    <input
-  type="text"
-  id="search-input"
-  placeholder="Search by name, role, or message..."
-  class="search-box"
-/>
-<ul id="data-list"></ul>
+    <h2>📁 Team Directory</h2>
 
+    <!-- Controls -->
+    <div class="controls">
+      <input
+        type="text"
+        id="search-input"
+        placeholder="Search by name, role, or message..."
+        class="search-box"
+        aria-label="Search text"
+      />
+
+      <select id="role-filter" class="select">
+        <option value="">All roles</option>
+      </select>
+
+      <label class="switch">
+        <input type="checkbox" id="fuzzy-toggle"/>
+        <span class="slider"></span>
+        <span class="label">Fuzzy</span>
+      </label>
+
+      <select id="page-size" class="select">
+        <option value="5">5 / page</option>
+        <option value="10" selected>10 / page</option>
+        <option value="20">20 / page</option>
+      </select>
+    </div>
+
+    <!-- Results meta -->
+    <div class="results-meta">
+      <span id="result-count">0 results</span>
+      <span id="fuzzy-hint" class="muted"></span>
+    </div>
+
+    <!-- List -->
+    <ul id="data-list"></ul>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      <button id="prev-page" class="page-btn" disabled>« Prev</button>
+      <span id="page-info">Page 1 / 1</span>
+      <button id="next-page" class="page-btn" disabled>Next »</button>
+    </div>
   </section>
 
   <footer class="footer">
