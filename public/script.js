@@ -1,4 +1,5 @@
-// Convert CSV string to an array of objects
+let allRecords = []; // Store parsed data globally
+
 function parseCSV(csv) {
   const [headerLine, ...lines] = csv.trim().split("\n");
   const headers = headerLine.split(",");
@@ -13,26 +14,40 @@ function parseCSV(csv) {
   });
 }
 
+function renderList(records) {
+  const list = document.getElementById("data-list");
+  list.innerHTML = "";
+
+  records.forEach(record => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <strong>${record.name}</strong> — ${record.role}<br/>
+      <em>${record.message}</em>
+    `;
+    list.appendChild(li);
+  });
+}
+
 async function loadCSVFile() {
   try {
     const res = await fetch("/data.txt");
     const text = await res.text();
-    const records = parseCSV(text);
-
-    const list = document.getElementById("data-list");
-    list.innerHTML = ""; // Clear previous
-
-    records.forEach(record => {
-      const li = document.createElement("li");
-      li.innerHTML = `
-        <strong>${record.name}</strong> — ${record.role}<br/>
-        <em>${record.message}</em>
-      `;
-      list.appendChild(li);
-    });
+    allRecords = parseCSV(text);
+    renderList(allRecords);
   } catch (err) {
     console.error("Failed to load CSV:", err);
   }
 }
+
+// Filter handler
+document.getElementById("search-input").addEventListener("input", function () {
+  const query = this.value.toLowerCase();
+  const filtered = allRecords.filter(record =>
+    Object.values(record).some(val =>
+      val.toLowerCase().includes(query)
+    )
+  );
+  renderList(filtered);
+});
 
 loadCSVFile();
