@@ -176,6 +176,18 @@ body, html {
   text-align: center;
 }
 
+.search-box {
+  padding: 0.8rem 1rem;
+  width: 100%;
+  max-width: 500px;
+  margin: 1rem auto;
+  display: block;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 1rem;
+}
+
+
 /* Responsive */
 @media (max-width: 768px) {
   .feature-cards {
