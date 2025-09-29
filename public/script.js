@@ -1,51 +1,38 @@
-// Handle contact form submission
-document.getElementById("contact-form").addEventListener("submit", async function (e) {
-  e.preventDefault();
+// Convert CSV string to an array of objects
+function parseCSV(csv) {
+  const [headerLine, ...lines] = csv.trim().split("\n");
+  const headers = headerLine.split(",");
 
-  const formData = {
-    name: this.name.value,
-    email: this.email.value,
-    message: this.message.value
-  };
-
-  try {
-    const res = await fetch("/api/contact", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(formData)
+  return lines.map(line => {
+    const values = line.split(",");
+    const entry = {};
+    headers.forEach((header, idx) => {
+      entry[header.trim()] = values[idx].trim();
     });
+    return entry;
+  });
+}
 
-    const data = await res.json();
-    document.getElementById("response-msg").textContent = data.message;
-  } catch (err) {
-    document.getElementById("response-msg").textContent = "Something went wrong!";
-    console.error("Error submitting contact:", err);
-  }
-});
-
-// Load the data.txt and display it
-async function loadTextFile() {
+async function loadCSVFile() {
   try {
     const res = await fetch("/data.txt");
     const text = await res.text();
-    const lines = text.split("\n").filter(Boolean);
+    const records = parseCSV(text);
 
     const list = document.getElementById("data-list");
-    lines.forEach(line => {
+    list.innerHTML = ""; // Clear previous
+
+    records.forEach(record => {
       const li = document.createElement("li");
-      li.textContent = line;
+      li.innerHTML = `
+        <strong>${record.name}</strong> — ${record.role}<br/>
+        <em>${record.message}</em>
+      `;
       list.appendChild(li);
     });
   } catch (err) {
-    console.error("Failed to load data.txt:", err);
+    console.error("Failed to load CSV:", err);
   }
 }
 
-loadTextFile();
-
-// CTA button example
-document.getElementById("cta-button").addEventListener("click", () => {
-  alert("Welcome aboard! Let's build your starry website ⭐️");
-});
+loadCSVFile();
