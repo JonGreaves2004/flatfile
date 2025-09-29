@@ -1,4 +1,11 @@
 name,role,message
-Alice,Designer,Passionate about user experiences
-Bob,Developer,Coding pixel-perfect apps
-Charlie,Manager,Helping teams thrive
+Alice,Designer,"Passionate about user experiences"
+Bob,Developer,"Coding pixel-perfect apps"
+Charlie,Manager,"Helping teams thrive"
+Dina,Developer,"Full-stack wizard with a love for APIs"
+Evan,Designer,"Design systems and accessibility"
+Farah,Manager,"Roadmaps, delivery, and outcomes"
+Gabe,Developer,"TypeScript, Node, and performance"
+Hana,Designer,"Motion and micro-interactions"
+Ivan,Developer,"Testing, CI/CD, quality-first"
+Jia,Manager,"Coaching and career growth"
