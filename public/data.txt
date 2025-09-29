@@ -1,5 +1,4 @@
-Welcome to StarryWeb!
-We build beautiful responsive websites.
-Contact us to launch your online presence.
-Wanted to add some more content.
-Whill this get picked up I wonder?
+name,role,message
+Alice,Designer,Passionate about user experiences
+Bob,Developer,Coding pixel-perfect apps
+Charlie,Manager,Helping teams thrive
