@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StarryWeb Fullstack</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header>
+    <nav class="navbar">
+      <div class="logo">⭐ StarryWeb</div>
+      <ul class="nav-links">
+        <li><a href="#hero">Home</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#contact">Contact</a></li>
+        <li><a href="#data-section">Data</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <section id="hero" class="hero">
+    <div class="hero-content">
+      <h1>Shine Bright Online ✨</h1>
+      <p>Your modern, beautiful web presence starts here.</p>
+      <button id="cta-button">Get Started</button>
+    </div>
+  </section>
+
+  <section id="features" class="features">
+    <h2>Our Features</h2>
+    <div class="feature-cards">
+      <div class="card">
+        <h3>Responsive Design</h3>
+        <p>Perfect on any device. Mobile, tablet or desktop.</p>
+      </div>
+      <div class="card">
+        <h3>Fast Performance</h3>
+        <p>Optimized for speed and smooth interactions.</p>
+      </div>
+      <div class="card">
+        <h3>Modern Aesthetics</h3>
+        <p>Clean, sleek and built to impress users.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" class="contact">
+    <h2>Contact Us</h2>
+    <form id="contact-form">
+      <input type="text" name="name" placeholder="Your Name" required />
+      <input type="email" name="email" placeholder="Your Email" required />
+      <textarea name="message" placeholder="Your Message" required></textarea>
+      <button type="submit">Send</button>
+    </form>
+    <div id="response-msg"></div>
+  </section>
+
+  <section id="data-section" class="data-section">
+    <h2>📁 From Our Files</h2>
+    <ul id="data-list"></ul>
+  </section>
+
+  <footer class="footer">
+    <p>&copy; 2025 StarryWeb. All rights reserved.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
