@@ -1,3 +1,20 @@
+// === GOOGLE SHEETS (Published CSV) CONFIG ===
+const SHEET_CSV_URL =
+//  "https://docs.google.com/spreadsheets/d/<<SHEET_ID>>/export?format=csv&gid=<<GID>>";
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vTW0dfyxzzttB8ukYBZS8UygpXaRllwKctevJKB4-6mSFst21f36MEBbKa5pHhur5eUFRfr84UfcuGa/pub?gid=0&single=true&output=csv";
+
+// Optional: disable browser caches for fresher reads
+const CSV_FETCH_OPTS = { cache: "no-store" };
+
+// Optional: add a cache-buster query each fetch (helps defeat intermediary caches)
+function withCacheBuster(url) {
+  const u = new URL(url);
+  u.searchParams.set("_cb", Date.now().toString());
+  return u.toString();
+}
+
+
+
 /* ---------------------------
    Utility: CSV parser w/ quotes
 ---------------------------- */
@@ -145,24 +162,30 @@ const fuzzyHint = document.getElementById("fuzzy-hint");
 ---------------------------- */
 async function loadCSVFile() {
   try {
-    const res = await fetch("/data.txt");
+    const res = await fetch(withCacheBuster(SHEET_CSV_URL), CSV_FETCH_OPTS);
+    if (!res.ok) throw new Error(`CSV HTTP ${res.status}`);
     const text = await res.text();
+
+    // Uses your existing robust CSV parser
     allRecords = parseCSV(text);
 
-    // Populate role dropdown
+    // Rebuild the role dropdown
     const roles = [...new Set(allRecords.map(r => r.role).filter(Boolean))].sort();
+    roleEl.innerHTML = '<option value="">All roles</option>';
     roles.forEach(r => {
       const opt = document.createElement("option");
-      opt.value = r;
-      opt.textContent = r;
+      opt.value = r; opt.textContent = r;
       roleEl.appendChild(opt);
     });
 
     applyFilters();
   } catch (err) {
-    console.error("Failed to load CSV:", err);
+    console.error("Failed to load Google Sheet CSV:", err);
+    // graceful UI message (optional)
+    listEl.innerHTML = `<li style="color:#b91c1c">Failed to load data. Check your Sheet URL or publish settings.</li>`;
   }
 }
+
 
 /* ---------------------------
    Filtering + Searching
