@@ -132,6 +132,15 @@ function highlightExact(text, query) {
   return escapeHTML(text).replace(rx, (m) => `<mark>${escapeHTML(m)}</mark>`);
 }
 
+
+// ✅ Sanitizer: allows only <br>, <p>, <b>, <i>, <em>, <strong>
+function sanitizeHTML(input) {
+  if (!input) return "";
+  return input.replace(/<(?!\/?(br|p|b|i|em|strong)\b)[^>]*>/gi, "");
+}
+
+
+
 /* ---------------------------
    State
 ---------------------------- */
