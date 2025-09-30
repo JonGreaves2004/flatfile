@@ -244,7 +244,7 @@ function render() {
     const name = highlightExact(rec.name || "", currentQuery);
     const role = highlightExact(rec.role || "", currentQuery);
     // First, sanitize message to strip unsafe tags
-    const safeMsg = sanitizeHTML(record.message || "");
+    const safeMsg = sanitizeHTML(rec.message || "");
     // Then allow highlighting (still safe, since highlightExact wraps with <mark>)
     const msg = highlightExact(safeMsg, currentQuery);
 
