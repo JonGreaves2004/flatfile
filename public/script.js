@@ -1,6 +1,6 @@
 // === GOOGLE SHEETS (Published CSV) CONFIG ===
 const SHEET_CSV_URL =
-//  "https://docs.google.com/spreadsheets/d/<<SHEET_ID>>/export?format=csv&gid=<<GID>>";
+  // "https://docs.google.com/spreadsheets/d/<<SHEET_ID>>/export?format=csv&gid=<<GID>>";
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTW0dfyxzzttB8ukYBZS8UygpXaRllwKctevJKB4-6mSFst21f36MEBbKa5pHhur5eUFRfr84UfcuGa/pub?gid=0&single=true&output=csv";
 
 // Optional: disable browser caches for fresher reads
@@ -12,8 +12,6 @@ function withCacheBuster(url) {
   u.searchParams.set("_cb", Date.now().toString());
   return u.toString();
 }
-
-
 
 /* ---------------------------
    Utility: CSV parser w/ quotes
@@ -111,9 +109,8 @@ function scoreRecord(rec, q) {
 }
 
 /* ---------------------------
-   Highlight helper (exact hits)
-   NOTE: We highlight exact query tokens.
-   Fuzzy-only hits get a "≈ fuzzy" badge.
+   Highlight helper (exact hits for plain text)
+   Used for name/role fields.
 ---------------------------- */
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
@@ -132,14 +129,79 @@ function highlightExact(text, query) {
   return escapeHTML(text).replace(rx, (m) => `<mark>${escapeHTML(m)}</mark>`);
 }
 
+/* ---------------------------
+   NEW: Safe HTML + HTML-aware highlighting for message
+---------------------------- */
 
-// ✅ Sanitizer: allows only <br>, <p>, <b>, <i>, <em>, <strong>
-function sanitizeHTML(input) {
+// Allowed tags (no attributes)
+const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG"]);
+
+// Sanitize: keep only allowed tags; strip all attributes; unwrap disallowed tags
+function sanitizeBasicHTML(input) {
   if (!input) return "";
-  return input.replace(/<(?!\/?(br|p|b|i|em|strong)\b)[^>]*>/gi, "");
+  const root = document.createElement("div");
+  root.innerHTML = input;
+
+  (function sanitize(node) {
+    [...node.childNodes].forEach((child) => {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const tag = child.tagName.toUpperCase();
+        if (!ALLOWED_TAGS.has(tag)) {
+          // unwrap: move its children up, then remove the element
+          while (child.firstChild) node.insertBefore(child.firstChild, child);
+          node.removeChild(child);
+          return;
+        }
+        // remove all attributes
+        [...child.attributes].forEach((a) => child.removeAttribute(a.name));
+        sanitize(child);
+      } else if (child.nodeType === Node.COMMENT_NODE) {
+        node.removeChild(child);
+      }
+      // text nodes are fine
+    });
+  })(root);
+
+  return root.innerHTML;
 }
 
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
+// Highlight matches inside TEXT nodes only, preserving HTML structure
+function highlightHTML(html, query) {
+  if (!query || !query.trim()) return html;
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return html;
+
+  const rx = new RegExp("(" + tokens.map(escapeRegex).join("|") + ")", "gi");
+  const container = document.createElement("div");
+  container.innerHTML = html;
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let n;
+  while ((n = walker.nextNode())) textNodes.push(n);
+
+  textNodes.forEach((txt) => {
+    const val = txt.nodeValue;
+    if (!rx.test(val)) return;
+    const frag = document.createDocumentFragment();
+    let lastIndex = 0;
+    val.replace(rx, (m, _g1, idx) => {
+      if (idx > lastIndex) frag.appendChild(document.createTextNode(val.slice(lastIndex, idx)));
+      const mark = document.createElement("mark");
+      mark.textContent = m;
+      frag.appendChild(mark);
+      lastIndex = idx + m.length;
+    });
+    if (lastIndex < val.length) frag.appendChild(document.createTextNode(val.slice(lastIndex)));
+    txt.parentNode.replaceChild(frag, txt);
+  });
+
+  return container.innerHTML;
+}
 
 /* ---------------------------
    State
@@ -195,7 +257,6 @@ async function loadCSVFile() {
   }
 }
 
-
 /* ---------------------------
    Filtering + Searching
 ---------------------------- */
@@ -243,26 +304,25 @@ function render() {
     const fuzzyTag = rec.__fuzzy ? '<span class="badge fuzzy" title="Approximate match">≈ fuzzy</span>' : "";
     const name = highlightExact(rec.name || "", currentQuery);
     const role = highlightExact(rec.role || "", currentQuery);
-    // First, sanitize message to strip unsafe tags
-    const safeMsg = sanitizeHTML(rec.message || "");
-    // Then allow highlighting (still safe, since highlightExact wraps with <mark>)
-    const msg = highlightExact(safeMsg, currentQuery);
 
+    // Message can contain simple HTML -> sanitize, then highlight within text nodes
+    const safeMsg = sanitizeBasicHTML(rec.message || "");
+    const msg = highlightHTML(safeMsg, currentQuery);
 
     const li = document.createElement("li");
     li.innerHTML = `
-    <div class="entry-top">
-      <div>
-        <strong>${name}</strong>
-        <span class="entry-role">— ${role}</span>
+      <div class="entry-top">
+        <div>
+          <strong>${name}</strong>
+          <span class="entry-role">— ${role}</span>
+        </div>
+        <div class="badges">
+          <span class="badge secondary">CSV</span>
+          ${fuzzyTag}
+        </div>
       </div>
-      <div class="badges">
-        <span class="badge secondary">CSV</span>
-        ${fuzzyTag}
-      </div>
-    </div>
-    <div class="entry-msg">${msg}</div>
-  `;
+      <div class="entry-msg">${msg}</div>
+    `;
     listEl.appendChild(li);
   }
 
