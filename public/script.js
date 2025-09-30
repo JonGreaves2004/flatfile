@@ -243,22 +243,26 @@ function render() {
     const fuzzyTag = rec.__fuzzy ? '<span class="badge fuzzy" title="Approximate match">≈ fuzzy</span>' : "";
     const name = highlightExact(rec.name || "", currentQuery);
     const role = highlightExact(rec.role || "", currentQuery);
-    const msg  = highlightExact(rec.message || "", currentQuery);
+    // First, sanitize message to strip unsafe tags
+    const safeMsg = sanitizeHTML(record.message || "");
+    // Then allow highlighting (still safe, since highlightExact wraps with <mark>)
+    const msg = highlightExact(safeMsg, currentQuery);
+
 
     const li = document.createElement("li");
     li.innerHTML = `
-      <div class="entry-top">
-        <div>
-          <strong>${name}</strong>
-          <span class="entry-role">— ${role}</span>
-        </div>
-        <div class="badges">
-          <span class="badge secondary">CSV</span>
-          ${fuzzyTag}
-        </div>
+    <div class="entry-top">
+      <div>
+        <strong>${name}</strong>
+        <span class="entry-role">— ${role}</span>
       </div>
-      <div class="entry-msg">${msg}</div>
-    `;
+      <div class="badges">
+        <span class="badge secondary">CSV</span>
+        ${fuzzyTag}
+      </div>
+    </div>
+    <div class="entry-msg">${msg}</div>
+  `;
     listEl.appendChild(li);
   }
 
