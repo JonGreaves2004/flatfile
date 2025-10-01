@@ -477,18 +477,27 @@ function render() {
     const name = highlightExact(rec.name || "", currentQuery);
     const role = highlightExact(rec.role || "", currentQuery);
 
-    // Message from sheet:
-    // 1) decode entities (if CSV escaped as &lt;p&gt;)
-    // 2) if plain text (no tags), convert newlines to <br> to preserve line breaks
-    // 3) sanitize allowed tags/attrs
-    // 4) highlight inside text nodes
+    // Message pipeline (you already have this):
     const raw = rec.message || "";
     const decoded = decodeEntities(raw);
     const withBreaks = normalizeMultilinePlainText(decoded);
     const safeMsg = sanitizeBasicHTML(withBreaks);
     const msg = highlightHTML(safeMsg, currentQuery);
 
+    // 🎯 NEW: find a date field and decide if it's past
+    // Try common headers like: date, competition_date, comp_date, event_date, Date
+    const dateStr = getFieldCI(rec, ["date", "competition_date", "comp_date", "event_date", "Date"]);
+    const eventDate = parseCompetitionDate(dateStr);
+    const past = isPastDate(eventDate);
+
     const li = document.createElement("li");
+
+    // Add class if past
+    if (past) li.classList.add("is-past");
+
+    // (optional) add a "Played" badge when past
+    const playedBadge = past ? '<span class="badge past" title="Completed">Played</span>' : "";
+
     li.innerHTML = `
       <div class="entry-top">
         <div>
@@ -497,9 +506,11 @@ function render() {
         </div>
         <div class="badges">
           <span class="badge secondary">CSV</span>
+          ${playedBadge}
           ${fuzzyTag}
         </div>
       </div>
+      ${eventDate ? `<div class="muted" style="margin-top:.25rem;">${escapeHTML(dateStr)}</div>` : ""}
       <div class="entry-msg">${msg}</div>
     `;
     listEl.appendChild(li);
