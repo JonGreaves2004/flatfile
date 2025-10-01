@@ -310,6 +310,71 @@ function highlightHTML(html, query) {
   return container.innerHTML;
 }
 
+
+// --- DATE HELPERS (treat event as "past" the day AFTER its date) ---
+
+// get a value by trying multiple field names (case-insensitive)
+function getFieldCI(obj, candidates) {
+  const map = Object.keys(obj).reduce((m, k) => {
+    m[k.toLowerCase()] = obj[k];
+    return m;
+  }, {});
+  for (const c of candidates) {
+    const v = map[c.toLowerCase()];
+    if (v != null && v !== "") return String(v);
+  }
+  return "";
+}
+
+// Parse common date formats into a local Date set to midnight
+// Supports: YYYY-MM-DD, DD/MM/YYYY, D/M/YYYY, and raw Date.parse as fallback.
+function parseCompetitionDate(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+
+  // If there's time, strip to date part
+  const dateOnly = s.split(/[T\s]/)[0];
+
+  // ISO 2025-07-14
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/;
+  const mIso = dateOnly.match(iso);
+  if (mIso) {
+    const [_, y, mo, d] = mIso;
+    const dt = new Date(Number(y), Number(mo) - 1, Number(d));
+    dt.setHours(0, 0, 0, 0);
+    return dt;
+  }
+
+  // UK style 14/07/2025 or 7/1/2025
+  const uk = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const mUk = dateOnly.match(uk);
+  if (mUk) {
+    const [_, d, mo, y] = mUk;
+    const dt = new Date(Number(y), Number(mo) - 1, Number(d));
+    dt.setHours(0, 0, 0, 0);
+    return dt;
+  }
+
+  // Fallback to Date.parse (browser may assume mm/dd/yyyy)
+  const parsed = new Date(s);
+  if (!isNaN(parsed)) {
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+  }
+  return null;
+}
+
+// Returns true if event date is strictly before today's date (local)
+// i.e., an event ON today's date is still "not past" until tomorrow
+function isPastDate(eventDate) {
+  if (!eventDate) return false;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  return eventDate < todayStart;
+}
+
+
+
 /* ---------------------------
    State
 ---------------------------- */
