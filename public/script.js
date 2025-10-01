@@ -332,7 +332,7 @@ const prevBtn = document.getElementById("prev-page");
 const nextBtn = document.getElementById("next-page");
 const pageInfo = document.getElementById("page-info");
 const resultCount = document.getElementById("result-count");
-const fuzzyToggle = document.getElementById("fuzzy-hint") ? document.getElementById("fuzzy-toggle") : document.getElementById("fuzzy-toggle"); // keep existing wiring
+//const fuzzyToggle = document.getElementById("fuzzy-hint") ? document.getElementById("fuzzy-toggle") : document.getElementById("fuzzy-toggle"; // keep existing wiring
 const fuzzyHint = document.getElementById("fuzzy-hint");
 
 /* ---------------------------
