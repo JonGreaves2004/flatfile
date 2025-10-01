@@ -14,45 +14,87 @@ function withCacheBuster(url) {
 }
 
 /* ---------------------------
-   Utility: CSV parser w/ quotes
+   Robust CSV parser (handles quoted newlines)
 ---------------------------- */
 function parseCSV(csv) {
-  const lines = csv.trim().split(/\r?\n/);
-  if (!lines.length) return [];
-  const headers = splitCSVLine(lines[0]);
-
-  return lines.slice(1).map((line) => {
-    const values = splitCSVLine(line);
-    const obj = {};
-    headers.forEach((h, i) => (obj[h.trim()] = (values[i] ?? "").trim()));
-    return obj;
-  });
-}
-
-function splitCSVLine(line) {
-  const out = [];
-  let cur = "";
+  const rows = [];
+  let row = [];
+  let field = "";
+  let i = 0;
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      // Toggle quotes or escape double-quote ""
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
+  while (i < csv.length) {
+    const ch = csv[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        // Escaped quote "" -> a single "
+        if (csv[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        // End of quoted section
+        inQuotes = false;
         i++;
-      } else {
-        inQuotes = !inQuotes;
+        continue;
       }
-    } else if (ch === "," && !inQuotes) {
-      out.push(cur);
-      cur = "";
-    } else {
-      cur += ch;
+      // Any character (including \n) inside quotes is literal
+      field += ch;
+      i++;
+      continue;
     }
+
+    // Not in quotes
+    if (ch === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (ch === ",") {
+      row.push(field);
+      field = "";
+      i++;
+      continue;
+    }
+    if (ch === "\r") {
+      // Handle CRLF or lone CR
+      if (csv[i + 1] === "\n") i++;
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i++;
+      continue;
+    }
+    if (ch === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+      i++;
+      continue;
+    }
+
+    field += ch;
+    i++;
   }
-  out.push(cur);
-  return out;
+
+  // Flush last field/row if any
+  if (inQuotes) {
+    // Malformed CSV (unterminated quote) — still push what we have
+    inQuotes = false;
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== "") rows.push(row);
+
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => String(h || "").trim());
+  return rows.slice(1).map(r => {
+    const obj = {};
+    headers.forEach((h, idx) => (obj[h] = (r[idx] ?? "").toString()));
+    return obj;
+  });
 }
 
 /* ---------------------------
@@ -130,7 +172,7 @@ function highlightExact(text, query) {
 }
 
 /* ---------------------------
-   NEW: Safe HTML + HTML-aware highlighting for message
+   Safe HTML + HTML-aware highlighting for message
    (allows class on whitelisted tags, and safe <a href>)
 ---------------------------- */
 
@@ -155,6 +197,22 @@ function sanitizeClassValue(raw) {
     .filter(Boolean)
     .filter(t => /^[A-Za-z0-9_-]{1,64}$/.test(t));
   return tokens.join(" ");
+}
+
+// Decode &lt; &gt; &amp; etc. from CSV before sanitizing
+function decodeEntities(str) {
+  if (!str) return "";
+  const el = document.createElement("textarea");
+  el.innerHTML = str;
+  return el.value;
+}
+
+// If a cell has no HTML tags, convert newlines to <br> so they render
+function normalizeMultilinePlainText(str) {
+  if (!str) return "";
+  // If it looks like HTML already, don't touch it
+  if (/[<][a-zA-Z]/.test(str)) return str;
+  return str.replace(/\r?\n/g, "<br>");
 }
 
 // Sanitize: keep only allowed tags; keep only class (sanitized);
@@ -213,14 +271,6 @@ function sanitizeBasicHTML(input) {
   })(root);
 
   return root.innerHTML;
-}
-
-// Decode &lt; &gt; &amp; etc. from CSV before sanitizing
-function decodeEntities(str) {
-  if (!str) return "";
-  const el = document.createElement("textarea");
-  el.innerHTML = str;
-  return el.value;
 }
 
 // Highlight matches inside TEXT nodes only, preserving HTML structure
@@ -282,7 +332,7 @@ const prevBtn = document.getElementById("prev-page");
 const nextBtn = document.getElementById("next-page");
 const pageInfo = document.getElementById("page-info");
 const resultCount = document.getElementById("result-count");
-const fuzzyToggle = document.getElementById("fuzzy-toggle");
+const fuzzyToggle = document.getElementById("fuzzy-hint") ? document.getElementById("fuzzy-toggle") : document.getElementById("fuzzy-toggle"); // keep existing wiring
 const fuzzyHint = document.getElementById("fuzzy-hint");
 
 /* ---------------------------
@@ -294,7 +344,7 @@ async function loadCSVFile() {
     if (!res.ok) throw new Error(`CSV HTTP ${res.status}`);
     const text = await res.text();
 
-    // Uses your existing robust CSV parser
+    // Parse CSV robustly (preserves multi-line cells)
     allRecords = parseCSV(text);
 
     // Rebuild the role dropdown
@@ -362,10 +412,15 @@ function render() {
     const name = highlightExact(rec.name || "", currentQuery);
     const role = highlightExact(rec.role || "", currentQuery);
 
-    // Message can contain basic HTML from the sheet -> decode, sanitize, highlight
+    // Message from sheet:
+    // 1) decode entities (if CSV escaped as &lt;p&gt;)
+    // 2) if plain text (no tags), convert newlines to <br> to preserve line breaks
+    // 3) sanitize allowed tags/attrs
+    // 4) highlight inside text nodes
     const raw = rec.message || "";
     const decoded = decodeEntities(raw);
-    const safeMsg = sanitizeBasicHTML(decoded);
+    const withBreaks = normalizeMultilinePlainText(decoded);
+    const safeMsg = sanitizeBasicHTML(withBreaks);
     const msg = highlightHTML(safeMsg, currentQuery);
 
     const li = document.createElement("li");
@@ -392,9 +447,11 @@ function render() {
   nextBtn.disabled = currentPage >= pages;
 
   // Fuzzy hint
-  fuzzyHint.textContent = fuzzyEnabled
-    ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted."
-    : "";
+  if (fuzzyHint) {
+    fuzzyHint.textContent = fuzzyEnabled
+      ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted."
+      : "";
+  }
 }
 
 /* ---------------------------
@@ -433,10 +490,13 @@ nextBtn.addEventListener("click", () => {
   render();
 });
 
-fuzzyToggle.addEventListener("change", (e) => {
-  fuzzyEnabled = e.target.checked;
-  applyFilters();
-});
+const fuzzyToggle = document.getElementById("fuzzy-toggle");
+if (fuzzyToggle) {
+  fuzzyToggle.addEventListener("change", (e) => {
+    fuzzyEnabled = e.target.checked;
+    applyFilters();
+  });
+}
 
 /* ---------------------------
    Contact + CTA (existing)
