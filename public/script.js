@@ -131,12 +131,34 @@ function highlightExact(text, query) {
 
 /* ---------------------------
    NEW: Safe HTML + HTML-aware highlighting for message
+   (allows class on whitelisted tags, and safe <a href>)
 ---------------------------- */
 
-// Allowed tags (no attributes)
-const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG"]);
+// Allowed tags (allow only class attribute globally + special href for <a>)
+const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG", "A", "SPAN"]);
 
-// Sanitize: keep only allowed tags; strip all attributes; unwrap disallowed tags
+// Validate http/https URL
+function isSafeHttpUrl(url) {
+  try {
+    const u = new URL(url, window.location.origin);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+// Sanitize "class" value: keep simple tokens (letters/numbers/_/-), drop others
+function sanitizeClassValue(raw) {
+  if (!raw) return "";
+  const tokens = raw
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter(t => /^[A-Za-z0-9_-]{1,64}$/.test(t));
+  return tokens.join(" ");
+}
+
+// Sanitize: keep only allowed tags; keep only class (sanitized);
+// for <a> also keep vetted href + add rel/target; unwrap disallowed tags.
 function sanitizeBasicHTML(input) {
   if (!input) return "";
   const root = document.createElement("div");
@@ -146,14 +168,42 @@ function sanitizeBasicHTML(input) {
     [...node.childNodes].forEach((child) => {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const tag = child.tagName.toUpperCase();
+
         if (!ALLOWED_TAGS.has(tag)) {
-          // unwrap: move its children up, then remove the element
+          // unwrap element (preserve children, drop the element)
           while (child.firstChild) node.insertBefore(child.firstChild, child);
           node.removeChild(child);
           return;
         }
-        // remove all attributes
-        [...child.attributes].forEach((a) => child.removeAttribute(a.name));
+
+        // Capture whitelisted attributes before strip
+        const rawClass = child.getAttribute("class") || "";
+        const cleanClass = sanitizeClassValue(rawClass);
+
+        if (tag === "A") {
+          const href = child.getAttribute("href") || "";
+          // strip everything
+          [...child.attributes].forEach((a) => child.removeAttribute(a.name));
+
+          if (isSafeHttpUrl(href)) {
+            child.setAttribute("href", href);
+            child.setAttribute("target", "_blank");
+            child.setAttribute("rel", "noopener noreferrer");
+          } else {
+            // unsafe/missing href -> unwrap link entirely
+            while (child.firstChild) node.insertBefore(child.firstChild, child);
+            node.removeChild(child);
+            return;
+          }
+
+          if (cleanClass) child.setAttribute("class", cleanClass);
+        } else {
+          // Non-<a> allowed tags: strip everything, then restore class if present
+          [...child.attributes].forEach((a) => child.removeAttribute(a.name));
+          if (cleanClass) child.setAttribute("class", cleanClass);
+        }
+
+        // Recurse into children
         sanitize(child);
       } else if (child.nodeType === Node.COMMENT_NODE) {
         node.removeChild(child);
@@ -165,11 +215,18 @@ function sanitizeBasicHTML(input) {
   return root.innerHTML;
 }
 
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Decode &lt; &gt; &amp; etc. from CSV before sanitizing
+function decodeEntities(str) {
+  if (!str) return "";
+  const el = document.createElement("textarea");
+  el.innerHTML = str;
+  return el.value;
 }
 
 // Highlight matches inside TEXT nodes only, preserving HTML structure
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 function highlightHTML(html, query) {
   if (!query || !query.trim()) return html;
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -305,8 +362,10 @@ function render() {
     const name = highlightExact(rec.name || "", currentQuery);
     const role = highlightExact(rec.role || "", currentQuery);
 
-    // Message can contain simple HTML -> sanitize, then highlight within text nodes
-    const safeMsg = sanitizeBasicHTML(rec.message || "");
+    // Message can contain basic HTML from the sheet -> decode, sanitize, highlight
+    const raw = rec.message || "";
+    const decoded = decodeEntities(raw);
+    const safeMsg = sanitizeBasicHTML(decoded);
     const msg = highlightHTML(safeMsg, currentQuery);
 
     const li = document.createElement("li");
