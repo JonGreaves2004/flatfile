@@ -64,3 +64,18 @@ mark { background:#fff59d; padding:0 .1rem; border-radius:3px; }
   .hero h1 { font-size:2rem; }
   .results-meta { flex-direction:column; gap:0.25rem; align-items:flex-start; }
 }
+
+
+/* Dim past competitions */
+#data-list li.is-past {
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+/* (optional) a subtle badge */
+.badge.past {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
