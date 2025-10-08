@@ -54,65 +54,98 @@ function parseCSV(csv) {
 -------------------------------------------------- */
 const FIELD_MAP = {
   id:            ["id", "uid", "slug", "competition_id"],
-
-  // Title shown on the card & modal heading
   title:         ["Comp name"],
-
-  // Date
   date:          ["Date"],
-
-  // Type/category (used in filter and tag)
   type:          ["Comp format (scoring type)", "Comp format"],
 
-  // Short preview text for the card
+  // Card preview
   overview:      ["Comp Summary", "Comp Description"],
 
-  // Rich sections in modal (we also auto-compose if blank)
+  // Overview body in modal (fallback is composed)
   details:       ["Comp Description", "Comp Summary"],
-  rules:         [
-    "Entrant criteria", "Acceptable for Handicap", "Handicap Limit", "Handicap Allowance",
-    "Divisions", "Board Comp", "Criteria for Prizewinners", "2's comp", "Merit Shield Contributer", "Trophy"
-  ],
-  procedures:    [
-    "Start Sheet", "1st & last tee times", "Players per time", "Interval (10 Mins)",
-    "Enable booking options", "Enabled from and to", "Zones for drawn comps",
-    "Enable Sign in", "Sign in options", "From and to times", "Sign In Message",
-    "Enable Charges", "Member Fee", "When to charge", "Refund options",
-    "Score entry", "Leaderboard", "Sweep breakdown", "Course Cards"
-  ],
 
   // Optional link column if you ever add one
   link:          ["link", "url", "website", "info_url"]
 };
 
-// Case-insensitive get using FIELD_MAP
+// These are the exact headers you shared, paired with reader-friendly labels.
+// We’ll render them as “Label: Value” lines in the modal.
+const RULE_ITEMS = [
+  { label:"Entrant criteria",            header:"Entrant criteria" },
+  { label:"Acceptable for Handicap",     header:"Acceptable for Handicap" },
+  { label:"Handicap Limit",              header:"Handicap Limit" },
+  { label:"Handicap Allowance",          header:"Handicap Allowance" },
+  { label:"Divisions",                   header:"Divisions" },
+  { label:"Board Competition",           header:"Board Comp" },
+  { label:"Criteria for Prizewinners",   header:"Criteria for Prizewinners" },
+  { label:"2's competition",             header:"2's comp" },
+  { label:"Merit Shield Contributor",    header:"Merit Shield Contributer" },
+  { label:"Trophy",                      header:"Trophy" }
+];
+
+const PROCEDURE_ITEMS = [
+  { label:"Start Sheet",                 header:"Start Sheet" },
+  { label:"1st & last tee times",       header:"1st & last tee times" },
+  { label:"Players per time",           header:"Players per time" },
+  { label:"Interval",                   header:"Interval (10 Mins)" },
+  { label:"Booking options enabled",    header:"Enable booking options" },
+  { label:"Booking window",             header:"Enabled from and to" },
+  { label:"Zones for drawn comps",      header:"Zones for drawn comps" },
+  { label:"Sign in enabled",            header:"Enable Sign in" },
+  { label:"Sign in options",            header:"Sign in options" },
+  { label:"Sign in times",              header:"From and to times" }, // appears twice in your headers, we’ll show once here
+  { label:"Sign In Message",            header:"Sign In Message" },
+  { label:"Charges enabled",            header:"Enable Charges" },
+  { label:"Member Fee",                 header:"Member Fee" },
+  { label:"When to charge",             header:"When to charge" },
+  { label:"Refund options",             header:"Refund options" },
+  { label:"Score entry",                header:"Score entry" },
+  { label:"Leaderboard",                header:"Leaderboard" },
+  { label:"Sweep breakdown",            header:"Sweep breakdown" },
+  { label:"Course Cards",               header:"Course Cards" }
+];
+
+/* -------------------------------------------------
+   Case-insensitive field helpers
+-------------------------------------------------- */
+function buildLc(rec) {
+  if (rec.__lc) return rec.__lc;
+  const m = {};
+  for (const k in rec) m[k.toLowerCase()] = rec[k];
+  rec.__lc = m;
+  return m;
+}
+
 function getField(rec, key) {
   const candidates = FIELD_MAP[key] || [];
-  if (!rec.__lc) {
-    rec.__lc = {};
-    for (const k in rec) rec.__lc[k.toLowerCase()] = rec[k];
-  }
+  const lc = buildLc(rec);
   for (const name of candidates) {
-    const v = rec.__lc[name.toLowerCase()];
+    const v = lc[name.toLowerCase()];
     if (v != null && v !== "") return String(v);
   }
   return "";
 }
 
-// Build a compact HTML block from labeled fields that exist
+// Get a raw value by the exact header text (case-insensitive)
+function getByHeader(rec, header) {
+  if (!header) return "";
+  const lc = buildLc(rec);
+  return lc[header.toLowerCase()] ?? "";
+}
+
+/* -------------------------------------------------
+   Build composed blocks & normalized record
+-------------------------------------------------- */
 function composeLabeledBlock(rec, labels) {
   const parts = [];
   for (const item of labels) {
-    const val =
-      getField(rec, item.keys[0]) ||
-      (item.keys.slice(1).map(k => getField(rec, k)).find(Boolean) || "");
+    const val = getByHeader(rec, item.header);
     if (!val) continue;
     parts.push(`<p><strong>${item.label}:</strong> ${val}</p>`);
   }
   return parts.join("");
 }
 
-// Normalize a raw CSV row into canonical fields our UI uses
 function normalizeRecord(rec) {
   const id    = getField(rec, "id") || makeSlug(getField(rec, "title") || "competition");
   const title = getField(rec, "title") || "Untitled competition";
@@ -120,60 +153,17 @@ function normalizeRecord(rec) {
   const type  = getField(rec, "type");
   const overview = getField(rec, "overview");
 
-  // DETAILS
+  // Overview (modal): prefer “details”; else compose from summary/description
   let details = getField(rec, "details");
   if (!details) {
     details = composeLabeledBlock(rec, [
-      { label:"Summary",     keys:["Comp Summary"] },
-      { label:"Description", keys:["Comp Description"] },
-    ]);
-  }
-
-  // RULES
-  let rules = getField(rec, "rules");
-  if (!rules) {
-    rules = composeLabeledBlock(rec, [
-      { label:"Entrant criteria",            keys:["Entrant criteria"] },
-      { label:"Acceptable for Handicap",     keys:["Acceptable for Handicap"] },
-      { label:"Handicap Limit",              keys:["Handicap Limit"] },
-      { label:"Handicap Allowance",          keys:["Handicap Allowance"] },
-      { label:"Divisions",                   keys:["Divisions"] },
-      { label:"Board Competition",           keys:["Board Comp"] },
-      { label:"Criteria for Prizewinners",   keys:["Criteria for Prizewinners"] },
-      { label:"2's competition",             keys:["2's comp"] },
-      { label:"Merit Shield Contributor",    keys:["Merit Shield Contributer"] },
-      { label:"Trophy",                      keys:["Trophy"] }
-    ]);
-  }
-
-  // PROCEDURES
-  let procedures = getField(rec, "procedures");
-  if (!procedures) {
-    procedures = composeLabeledBlock(rec, [
-      { label:"Start Sheet",            keys:["Start Sheet"] },
-      { label:"1st & last tee times",  keys:["1st & last tee times"] },
-      { label:"Players per time",      keys:["Players per time"] },
-      { label:"Interval",              keys:["Interval (10 Mins)"] },
-      { label:"Booking options",       keys:["Enable booking options"] },
-      { label:"Booking window",        keys:["Enabled from and to"] },
-      { label:"Zones for drawn comps", keys:["Zones for drawn comps"] },
-      { label:"Enable Sign in",        keys:["Enable Sign in"] },
-      { label:"Sign in options",       keys:["Sign in options"] },
-      { label:"Sign in times",         keys:["From and to times"] },
-      { label:"Sign In Message",       keys:["Sign In Message"] },
-      { label:"Enable Charges",        keys:["Enable Charges"] },
-      { label:"Member Fee",            keys:["Member Fee"] },
-      { label:"When to charge",        keys:["When to charge"] },
-      { label:"Refund options",        keys:["Refund options"] },
-      { label:"Score entry",           keys:["Score entry"] },
-      { label:"Leaderboard",           keys:["Leaderboard"] },
-      { label:"Sweep breakdown",       keys:["Sweep breakdown"] },
-      { label:"Course Cards",          keys:["Course Cards"] }
+      { label:"Summary",     header:"Comp Summary" },
+      { label:"Description", header:"Comp Description" }
     ]);
   }
 
   const link = getField(rec, "link");
-  return { id, title, date, type, overview, details, rules, procedures, link, __raw: rec };
+  return { id, title, date, type, overview, details, link, __raw: rec };
 }
 
 /* -------------------------------------------------
@@ -192,9 +182,8 @@ function levenshtein(a, b) {
 }
 
 function scoreRecord(rec, q) {
-  // Consider more fields for better search relevance
   const n = normalizeRecord(rec);
-  const text = `${n.title} ${n.type} ${n.overview} ${n.details} ${n.rules} ${n.procedures}`.toLowerCase();
+  const text = `${n.title} ${n.type} ${n.overview} ${n.details}`.toLowerCase();
   const tokens = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { score: 0, fuzzy: false };
   let score = 0, anyExact = false;
@@ -351,6 +340,32 @@ function makeSlug(s) {
   return (s || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
 }
 
+// Build label:value pairs from an item list and a raw record
+function buildPairs(recRaw, items) {
+  const pairs = [];
+  for (const { label, header } of items) {
+    const val = getByHeader(recRaw, header);
+    if (val != null && String(val).trim() !== "") {
+      pairs.push({ label, value: String(val) });
+    }
+  }
+  return pairs;
+}
+
+// Render pairs as a simple list: <li><strong>Label:</strong> Value</li>
+// Value supports basic HTML via sanitize pipeline.
+function renderLabelValueList(pairs, currentQuery) {
+  if (!pairs.length) return `<p class="muted">No information.</p>`;
+  const items = pairs.map(({ label, value }) => {
+    const valHTML = highlightHTML(
+      sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(value))),
+      currentQuery
+    );
+    return `<li><strong>${escapeHTML(label)}:</strong> <span class="kv-value">${valHTML}</span></li>`;
+  }).join("");
+  return `<ul class="kv-list">${items}</ul>`;
+}
+
 /* -------------------------------------------------
    State & DOM refs
 -------------------------------------------------- */
@@ -373,6 +388,16 @@ const resultCount = document.getElementById("result-count");
 const fuzzyToggle = document.getElementById("fuzzy-toggle");
 const fuzzyHint = document.getElementById("fuzzy-hint");
 document.getElementById("refresh-sheet")?.addEventListener("click", () => loadCSVFile());
+
+// Modal refs
+const modalEl = document.getElementById("record-modal");
+const modalCloseBtn = document.getElementById("modal-close");
+const modalTitle = document.getElementById("modal-title");
+const modalMeta = document.getElementById("modal-meta");
+const modalDetails = document.getElementById("modal-details");
+const modalRules = document.getElementById("modal-rules");
+const modalProcedures = document.getElementById("modal-procedures");
+let lastFocus = null;
 
 /* -------------------------------------------------
    Fetch + init
@@ -457,7 +482,7 @@ function render() {
     const name = highlightExact(recN.title, currentQuery);
     const role = highlightExact(recN.type || "", currentQuery);
 
-    // Overview (HTML or plain text)
+    // Overview preview (HTML or plain text)
     const decoded = decodeEntities(recN.overview || "");
     const withBreaks = normalizeMultilinePlainText(decoded);
     const safeMsg = sanitizeBasicHTML(withBreaks);
@@ -520,15 +545,6 @@ function render() {
 /* -------------------------------------------------
    Modal: open/close, populate, deep-link
 -------------------------------------------------- */
-const modalEl = document.getElementById("record-modal");
-const modalCloseBtn = document.getElementById("modal-close");
-const modalTitle = document.getElementById("modal-title");
-const modalMeta = document.getElementById("modal-meta");
-const modalDetails = document.getElementById("modal-details");
-const modalRules = document.getElementById("modal-rules");
-const modalProcedures = document.getElementById("modal-procedures");
-let lastFocus = null;
-
 function findRecordById(id) {
   if (!id) return null;
   let hit = allRecords.find(r => getField(r, "id") === id);
@@ -539,26 +555,31 @@ function findRecordById(id) {
 function openModalForRecord(recRaw) {
   const rec = normalizeRecord(recRaw);
 
+  // Title + meta
   modalTitle.textContent = rec.title;
-
   const parts = [];
   if (rec.date) parts.push(`📅 ${escapeHTML(rec.date)}`);
   if (rec.type) parts.push(`🏷️ ${escapeHTML(rec.type)}`);
   modalMeta.innerHTML = parts.join(" &nbsp;•&nbsp; ") || "";
 
-  const detHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.details || "")));
-  const rulHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.rules || "")));
-  const proHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.procedures || "")));
-  modalDetails.innerHTML = detHTML || "<em class='muted'>No details.</em>";
-  modalRules.innerHTML = rulHTML || "<em class='muted'>No rules.</em>";
-  modalProcedures.innerHTML = proHTML || "<em class='muted'>No procedures.</em>";
+  // OVERVIEW (rich text)
+  const overviewHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.details || "")));
+  modalDetails.innerHTML = overviewHTML || "<em class='muted'>No overview.</em>";
 
+  // RULES (Label: Value list)
+  const rulePairs = buildPairs(rec.__raw, RULE_ITEMS);
+  modalRules.innerHTML = renderLabelValueList(rulePairs, currentQuery);
+
+  // PROCEDURES (Label: Value list)
+  const procPairs = buildPairs(rec.__raw, PROCEDURE_ITEMS);
+  modalProcedures.innerHTML = renderLabelValueList(procPairs, currentQuery);
+
+  // Show modal + deep link
   lastFocus = document.activeElement;
   modalEl.hidden = false;
   document.body.style.overflow = "hidden";
-
   history.pushState({ id: rec.id }, "", "#" + rec.id);
-  modalCloseBtn.focus();
+  document.getElementById("modal-close").focus();
 }
 
 function closeModal() {
@@ -568,7 +589,7 @@ function closeModal() {
   if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
 }
 
-modalCloseBtn?.addEventListener("click", closeModal);
+document.getElementById("modal-close")?.addEventListener("click", closeModal);
 modalEl?.addEventListener("click", (e) => {
   if (e.target.matches(".modal__backdrop") || e.target.dataset.close === "backdrop") closeModal();
 });
