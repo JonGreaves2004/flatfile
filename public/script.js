@@ -9,9 +9,9 @@ function withCacheBuster(url) {
   return u.toString();
 }
 
-/* ---------------------------
-   Robust CSV parser (handles quoted newlines)
----------------------------- */
+/* -------------------------------------------------
+   Robust CSV parser (handles quoted newlines, quotes)
+-------------------------------------------------- */
 function parseCSV(csv) {
   const rows = [];
   let row = [];
@@ -24,10 +24,10 @@ function parseCSV(csv) {
 
     if (inQuotes) {
       if (ch === '"') {
-        if (csv[i + 1] === '"') { field += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
+        if (csv[i + 1] === '"') { field += '"'; i += 2; continue; } // escaped quote
+        inQuotes = false; i++; continue; // end quotes
       }
-      field += ch; i++; continue;
+      field += ch; i++; continue; // literal (incl. \n)
     }
 
     if (ch === '"') { inQuotes = true; i++; continue; }
@@ -49,9 +49,136 @@ function parseCSV(csv) {
   });
 }
 
-/* ---------------------------
+/* -------------------------------------------------
+   FIELD MAP for your sheet (case-insensitive)
+-------------------------------------------------- */
+const FIELD_MAP = {
+  id:            ["id", "uid", "slug", "competition_id"],
+
+  // Title shown on the card & modal heading
+  title:         ["Comp name"],
+
+  // Date
+  date:          ["Date"],
+
+  // Type/category (used in filter and tag)
+  type:          ["Comp format (scoring type)", "Comp format"],
+
+  // Short preview text for the card
+  overview:      ["Comp Summary", "Comp Description"],
+
+  // Rich sections in modal (we also auto-compose if blank)
+  details:       ["Comp Description", "Comp Summary"],
+  rules:         [
+    "Entrant criteria", "Acceptable for Handicap", "Handicap Limit", "Handicap Allowance",
+    "Divisions", "Board Comp", "Criteria for Prizewinners", "2's comp", "Merit Shield Contributer", "Trophy"
+  ],
+  procedures:    [
+    "Start Sheet", "1st & last tee times", "Players per time", "Interval (10 Mins)",
+    "Enable booking options", "Enabled from and to", "Zones for drawn comps",
+    "Enable Sign in", "Sign in options", "From and to times", "Sign In Message",
+    "Enable Charges", "Member Fee", "When to charge", "Refund options",
+    "Score entry", "Leaderboard", "Sweep breakdown", "Course Cards"
+  ],
+
+  // Optional link column if you ever add one
+  link:          ["link", "url", "website", "info_url"]
+};
+
+// Case-insensitive get using FIELD_MAP
+function getField(rec, key) {
+  const candidates = FIELD_MAP[key] || [];
+  if (!rec.__lc) {
+    rec.__lc = {};
+    for (const k in rec) rec.__lc[k.toLowerCase()] = rec[k];
+  }
+  for (const name of candidates) {
+    const v = rec.__lc[name.toLowerCase()];
+    if (v != null && v !== "") return String(v);
+  }
+  return "";
+}
+
+// Build a compact HTML block from labeled fields that exist
+function composeLabeledBlock(rec, labels) {
+  const parts = [];
+  for (const item of labels) {
+    const val =
+      getField(rec, item.keys[0]) ||
+      (item.keys.slice(1).map(k => getField(rec, k)).find(Boolean) || "");
+    if (!val) continue;
+    parts.push(`<p><strong>${item.label}:</strong> ${val}</p>`);
+  }
+  return parts.join("");
+}
+
+// Normalize a raw CSV row into canonical fields our UI uses
+function normalizeRecord(rec) {
+  const id    = getField(rec, "id") || makeSlug(getField(rec, "title") || "competition");
+  const title = getField(rec, "title") || "Untitled competition";
+  const date  = getField(rec, "date");
+  const type  = getField(rec, "type");
+  const overview = getField(rec, "overview");
+
+  // DETAILS
+  let details = getField(rec, "details");
+  if (!details) {
+    details = composeLabeledBlock(rec, [
+      { label:"Summary",     keys:["Comp Summary"] },
+      { label:"Description", keys:["Comp Description"] },
+    ]);
+  }
+
+  // RULES
+  let rules = getField(rec, "rules");
+  if (!rules) {
+    rules = composeLabeledBlock(rec, [
+      { label:"Entrant criteria",            keys:["Entrant criteria"] },
+      { label:"Acceptable for Handicap",     keys:["Acceptable for Handicap"] },
+      { label:"Handicap Limit",              keys:["Handicap Limit"] },
+      { label:"Handicap Allowance",          keys:["Handicap Allowance"] },
+      { label:"Divisions",                   keys:["Divisions"] },
+      { label:"Board Competition",           keys:["Board Comp"] },
+      { label:"Criteria for Prizewinners",   keys:["Criteria for Prizewinners"] },
+      { label:"2's competition",             keys:["2's comp"] },
+      { label:"Merit Shield Contributor",    keys:["Merit Shield Contributer"] },
+      { label:"Trophy",                      keys:["Trophy"] }
+    ]);
+  }
+
+  // PROCEDURES
+  let procedures = getField(rec, "procedures");
+  if (!procedures) {
+    procedures = composeLabeledBlock(rec, [
+      { label:"Start Sheet",            keys:["Start Sheet"] },
+      { label:"1st & last tee times",  keys:["1st & last tee times"] },
+      { label:"Players per time",      keys:["Players per time"] },
+      { label:"Interval",              keys:["Interval (10 Mins)"] },
+      { label:"Booking options",       keys:["Enable booking options"] },
+      { label:"Booking window",        keys:["Enabled from and to"] },
+      { label:"Zones for drawn comps", keys:["Zones for drawn comps"] },
+      { label:"Enable Sign in",        keys:["Enable Sign in"] },
+      { label:"Sign in options",       keys:["Sign in options"] },
+      { label:"Sign in times",         keys:["From and to times"] },
+      { label:"Sign In Message",       keys:["Sign In Message"] },
+      { label:"Enable Charges",        keys:["Enable Charges"] },
+      { label:"Member Fee",            keys:["Member Fee"] },
+      { label:"When to charge",        keys:["When to charge"] },
+      { label:"Refund options",        keys:["Refund options"] },
+      { label:"Score entry",           keys:["Score entry"] },
+      { label:"Leaderboard",           keys:["Leaderboard"] },
+      { label:"Sweep breakdown",       keys:["Sweep breakdown"] },
+      { label:"Course Cards",          keys:["Course Cards"] }
+    ]);
+  }
+
+  const link = getField(rec, "link");
+  return { id, title, date, type, overview, details, rules, procedures, link, __raw: rec };
+}
+
+/* -------------------------------------------------
    Fuzzy helpers
----------------------------- */
+-------------------------------------------------- */
 function levenshtein(a, b) {
   a = a.toLowerCase(); b = b.toLowerCase();
   const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
@@ -63,8 +190,11 @@ function levenshtein(a, b) {
   }
   return dp[a.length][b.length];
 }
+
 function scoreRecord(rec, q) {
-  const text = `${rec.name} ${rec.role} ${rec.message}`.toLowerCase();
+  // Consider more fields for better search relevance
+  const n = normalizeRecord(rec);
+  const text = `${n.title} ${n.type} ${n.overview} ${n.details} ${n.rules} ${n.procedures}`.toLowerCase();
   const tokens = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { score: 0, fuzzy: false };
   let score = 0, anyExact = false;
@@ -80,9 +210,9 @@ function scoreRecord(rec, q) {
   return { score, fuzzy: !anyExact && score > 0 };
 }
 
-/* ---------------------------
-   Plain text highlighter (name/role)
----------------------------- */
+/* -------------------------------------------------
+   Plain text highlighter (name/type)
+-------------------------------------------------- */
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
 }
@@ -94,10 +224,14 @@ function highlightExact(text, query) {
   return escapeHTML(text).replace(rx, (m) => `<mark>${escapeHTML(m)}</mark>`);
 }
 
-/* ---------------------------
-   Safe HTML + HTML-aware highlighting (message / modal fields)
----------------------------- */
+/* -------------------------------------------------
+   Safe HTML + HTML-aware highlighting (content)
+   - allows class on whitelisted tags
+   - <a> only with http/https + target/rel
+   - supports <span>
+-------------------------------------------------- */
 const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG", "A", "SPAN"]);
+
 function isSafeHttpUrl(url) {
   try { const u = new URL(url, window.location.origin); return u.protocol === "http:" || u.protocol === "https:"; }
   catch { return false; }
@@ -186,25 +320,20 @@ function highlightHTML(html, query) {
   return container.innerHTML;
 }
 
-/* ---------------------------
-   Date helpers + case-insensitive field access
----------------------------- */
-function getFieldCI(obj, candidates) {
-  const map = Object.keys(obj).reduce((m, k) => (m[k.toLowerCase()] = obj[k], m), {});
-  for (const c of candidates) {
-    const v = map[c.toLowerCase()];
-    if (v != null && v !== "") return String(v);
-  }
-  return "";
-}
+/* -------------------------------------------------
+   Date helpers
+-------------------------------------------------- */
 function parseCompetitionDate(dateStr) {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
   const dateOnly = s.split(/[T\s]/)[0];
+
   const mIso = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (mIso) { const [_, y, mo, d] = mIso; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
+
   const mUk = dateOnly.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mUk) { const [_, d, mo, y] = mUk; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
+
   const parsed = new Date(s);
   if (!isNaN(parsed)) { parsed.setHours(0,0,0,0); return parsed; }
   return null;
@@ -215,14 +344,21 @@ function isPastDate(eventDate) {
   return eventDate < today;
 }
 
-/* ---------------------------
+/* -------------------------------------------------
+   Utilities
+-------------------------------------------------- */
+function makeSlug(s) {
+  return (s || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
+}
+
+/* -------------------------------------------------
    State & DOM refs
----------------------------- */
+-------------------------------------------------- */
 let allRecords = [];
 let filtered = [];
 let currentPage = 1;
 let pageSize = 10;
-let currentRole = "";
+let currentRole = ""; // actually "type" in your data
 let currentQuery = "";
 let fuzzyEnabled = false;
 
@@ -238,9 +374,9 @@ const fuzzyToggle = document.getElementById("fuzzy-toggle");
 const fuzzyHint = document.getElementById("fuzzy-hint");
 document.getElementById("refresh-sheet")?.addEventListener("click", () => loadCSVFile());
 
-/* ---------------------------
+/* -------------------------------------------------
    Fetch + init
----------------------------- */
+-------------------------------------------------- */
 async function loadCSVFile() {
   try {
     const res = await fetch(withCacheBuster(SHEET_CSV_URL), CSV_FETCH_OPTS);
@@ -248,14 +384,20 @@ async function loadCSVFile() {
     const text = await res.text();
     allRecords = parseCSV(text);
 
-    // Build role dropdown (or competition type, etc.)
-    const roles = [...new Set(allRecords.map(r => r.role).filter(Boolean))].sort();
-    roleEl.innerHTML = '<option value="">All roles</option>';
-    roles.forEach(r => { const opt = document.createElement("option"); opt.value = r; opt.textContent = r; roleEl.appendChild(opt); });
+    // Build the type/category dropdown from your data
+    const roles = [...new Set(allRecords
+      .map(r => (getField(r, "type") || "").trim())
+      .filter(Boolean))].sort();
+    roleEl.innerHTML = '<option value="">All types</option>';
+    roles.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r; opt.textContent = r;
+      roleEl.appendChild(opt);
+    });
 
     applyFilters();
 
-    // Open deep link if present (#<id>)
+    // Open deep link if present
     const hashId = location.hash.replace(/^#/, "");
     if (hashId) {
       const rec = findRecordById(hashId);
@@ -267,24 +409,28 @@ async function loadCSVFile() {
   }
 }
 
-/* ---------------------------
+/* -------------------------------------------------
    Filtering + Searching
----------------------------- */
+-------------------------------------------------- */
 function applyFilters() {
   const q = currentQuery.trim().toLowerCase();
 
+  // Filter by "type"
   let temp = currentRole
-    ? allRecords.filter(r => (r.role || "").toLowerCase() === currentRole.toLowerCase())
+    ? allRecords.filter(r => (getField(r, "type") || "").toLowerCase() === currentRole.toLowerCase())
     : [...allRecords];
 
   if (!q) {
     filtered = temp;
   } else if (!fuzzyEnabled) {
-    filtered = temp.filter(r => Object.values(r).some(val => (val || "").toLowerCase().includes(q)));
+    filtered = temp.filter(r =>
+      Object.values(r).some(val => (val || "").toLowerCase().includes(q))
+    );
   } else {
-    const scored = temp.map(rec => ({ rec, s: scoreRecord(rec, q) }))
-                       .filter(x => x.s.score > 0)
-                       .sort((a,b)=> b.s.score - a.s.score);
+    const scored = temp
+      .map(rec => ({ rec, s: scoreRecord(rec, q) }))
+      .filter(x => x.s.score > 0)
+      .sort((a, b) => b.s.score - a.s.score);
     filtered = scored.map(x => ({ ...x.rec, __fuzzy: x.s.fuzzy }));
   }
 
@@ -292,9 +438,9 @@ function applyFilters() {
   render();
 }
 
-/* ---------------------------
+/* -------------------------------------------------
    Rendering (with pagination)
----------------------------- */
+-------------------------------------------------- */
 function render() {
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -304,30 +450,32 @@ function render() {
   const slice = filtered.slice(start, start + pageSize);
 
   listEl.innerHTML = "";
-  for (const rec of slice) {
-    const fuzzyTag = rec.__fuzzy ? '<span class="badge fuzzy" title="Approximate match">≈ fuzzy</span>' : "";
-    const name = highlightExact(rec.name || rec.title || "Untitled", currentQuery);
-    const role = highlightExact(rec.role || rec.type || "", currentQuery);
+  for (const rawRec of slice) {
+    const recN = normalizeRecord(rawRec);
 
-    // message preview
-    const raw = rec.message || rec.overview || "";
-    const decoded = decodeEntities(raw);
+    const fuzzyTag = rawRec.__fuzzy ? '<span class="badge fuzzy" title="Approximate match">≈ fuzzy</span>' : "";
+    const name = highlightExact(recN.title, currentQuery);
+    const role = highlightExact(recN.type || "", currentQuery);
+
+    // Overview (HTML or plain text)
+    const decoded = decodeEntities(recN.overview || "");
     const withBreaks = normalizeMultilinePlainText(decoded);
     const safeMsg = sanitizeBasicHTML(withBreaks);
     const msg = highlightHTML(safeMsg, currentQuery);
 
-    // date logic
-    const dateStr = getFieldCI(rec, ["date", "competition_date", "comp_date", "event_date", "Date"]);
-    const eventDate = parseCompetitionDate(dateStr);
+    // Date & past dimming
+    const eventDate = parseCompetitionDate(recN.date);
     const past = isPastDate(eventDate);
     const playedBadge = past ? '<span class="badge past" title="Completed">Played</span>' : "";
 
-    // id/slug (needed for deep-link + modal)
-    const id = getFieldCI(rec, ["id", "slug", "uid"]) || makeSlug(rec.name || rec.title || "item");
+    // Optional link badge
+    const linkBadge = recN.link && isSafeHttpUrl(recN.link)
+      ? `<a class="badge" href="${recN.link}" target="_blank" rel="noopener noreferrer">Link</a>`
+      : "";
 
     const li = document.createElement("li");
     if (past) li.classList.add("is-past");
-    li.dataset.id = id;
+    li.dataset.id = recN.id;
 
     li.innerHTML = `
       <div class="entry-top">
@@ -337,14 +485,15 @@ function render() {
         </div>
         <div class="badges">
           <span class="badge secondary">CSV</span>
+          ${linkBadge}
           ${playedBadge}
           ${fuzzyTag}
         </div>
       </div>
-      ${eventDate ? `<div class="muted" style="margin-top:.25rem;">${escapeHTML(dateStr)}</div>` : ""}
+      ${recN.date ? `<div class="muted" style="margin-top:.25rem;">${escapeHTML(recN.date)}</div>` : ""}
       <div class="entry-msg">${msg}</div>
       <div style="margin-top:.6rem;">
-        <button class="view-btn" data-view="${id}" aria-label="View details for ${escapeHTML(rec.name || rec.title || "item")}">View details</button>
+        <button class="view-btn" data-view="${recN.id}" aria-label="View details for ${escapeHTML(recN.title)}">View details</button>
       </div>
     `;
     listEl.appendChild(li);
@@ -354,9 +503,11 @@ function render() {
   pageInfo.textContent = `Page ${currentPage} / ${pages}`;
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= pages;
-  fuzzyHint.textContent = fuzzyEnabled ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted." : "";
+  fuzzyHint.textContent = fuzzyEnabled
+    ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted."
+    : "";
 
-  // wire detail buttons
+  // Wire detail buttons
   listEl.querySelectorAll("[data-view]").forEach(btn => {
     btn.addEventListener("click", (e) => {
       const id = e.currentTarget.getAttribute("data-view");
@@ -366,13 +517,9 @@ function render() {
   });
 }
 
-function makeSlug(s) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
-}
-
-/* ---------------------------
+/* -------------------------------------------------
    Modal: open/close, populate, deep-link
----------------------------- */
+-------------------------------------------------- */
 const modalEl = document.getElementById("record-modal");
 const modalCloseBtn = document.getElementById("modal-close");
 const modalTitle = document.getElementById("modal-title");
@@ -380,79 +527,54 @@ const modalMeta = document.getElementById("modal-meta");
 const modalDetails = document.getElementById("modal-details");
 const modalRules = document.getElementById("modal-rules");
 const modalProcedures = document.getElementById("modal-procedures");
-
 let lastFocus = null;
 
 function findRecordById(id) {
   if (!id) return null;
-  // try id/slug/uid columns; else match our generated slug from name/title
-  return allRecords.find(r => {
-    const rid = getFieldCI(r, ["id", "slug", "uid"]);
-    if (rid && rid === id) return true;
-    const alt = makeSlug(r.name || r.title || "item");
-    return alt === id;
-  }) || null;
+  let hit = allRecords.find(r => getField(r, "id") === id);
+  if (hit) return hit;
+  return allRecords.find(r => makeSlug(getField(r, "title") || "competition") === id) || null;
 }
 
-function openModalForRecord(rec) {
-  // title
-  const title = rec.name || rec.title || "Details";
-  modalTitle.textContent = title;
+function openModalForRecord(recRaw) {
+  const rec = normalizeRecord(recRaw);
 
-  // meta (date, location, type)
-  const dateStr = getFieldCI(rec, ["date", "competition_date", "comp_date", "event_date"]);
-  const location = getFieldCI(rec, ["location", "course", "venue"]);
-  const type = getFieldCI(rec, ["role", "type", "category"]);
-  const metaParts = [];
-  if (dateStr) metaParts.push(`📅 ${escapeHTML(dateStr)}`);
-  if (location) metaParts.push(`📍 ${escapeHTML(location)}`);
-  if (type) metaParts.push(`🏷️ ${escapeHTML(type)}`);
-  modalMeta.innerHTML = metaParts.join(" &nbsp;•&nbsp; ") || "";
+  modalTitle.textContent = rec.title;
 
-  // content fields (may contain HTML)
-  const decodedDetails = decodeEntities(getFieldCI(rec, ["details", "overview", "description"]));
-  const decodedRules = decodeEntities(getFieldCI(rec, ["rules", "competition_rules"]));
-  const decodedProcedures = decodeEntities(getFieldCI(rec, ["procedures", "procedure", "how_to_enter"]));
+  const parts = [];
+  if (rec.date) parts.push(`📅 ${escapeHTML(rec.date)}`);
+  if (rec.type) parts.push(`🏷️ ${escapeHTML(rec.type)}`);
+  modalMeta.innerHTML = parts.join(" &nbsp;•&nbsp; ") || "";
 
-  const detailsHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodedDetails));
-  const rulesHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodedRules));
-  const proceduresHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodedProcedures));
+  const detHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.details || "")));
+  const rulHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.rules || "")));
+  const proHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.procedures || "")));
+  modalDetails.innerHTML = detHTML || "<em class='muted'>No details.</em>";
+  modalRules.innerHTML = rulHTML || "<em class='muted'>No rules.</em>";
+  modalProcedures.innerHTML = proHTML || "<em class='muted'>No procedures.</em>";
 
-  modalDetails.innerHTML = detailsHTML || "<em class='muted'>No details.</em>";
-  modalRules.innerHTML = rulesHTML || "<em class='muted'>No rules.</em>";
-  modalProcedures.innerHTML = proceduresHTML || "<em class='muted'>No procedures.</em>";
-
-  // show modal
   lastFocus = document.activeElement;
   modalEl.hidden = false;
   document.body.style.overflow = "hidden";
 
-  // set hash (deep-link)
-  const id = getFieldCI(rec, ["id", "slug", "uid"]) || makeSlug(rec.name || rec.title || "item");
-  history.pushState({ id }, "", "#" + id);
-
-  // focus trap (simple): focus close button
+  history.pushState({ id: rec.id }, "", "#" + rec.id);
   modalCloseBtn.focus();
 }
 
 function closeModal() {
   modalEl.hidden = true;
   document.body.style.overflow = "";
-  // clear hash if it matches an id
   if (location.hash) history.pushState({}, "", location.pathname + location.search);
-  // restore focus
   if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
 }
 
-modalCloseBtn.addEventListener("click", closeModal);
-modalEl.addEventListener("click", (e) => {
+modalCloseBtn?.addEventListener("click", closeModal);
+modalEl?.addEventListener("click", (e) => {
   if (e.target.matches(".modal__backdrop") || e.target.dataset.close === "backdrop") closeModal();
 });
 document.addEventListener("keydown", (e) => {
-  if (!modalEl.hidden && e.key === "Escape") closeModal();
+  if (!modalEl?.hidden && e.key === "Escape") closeModal();
 });
-
-// Open modal if user navigates to a hash (back/forward or manual)
 window.addEventListener("hashchange", () => {
   const id = location.hash.replace(/^#/, "");
   if (!id) { if (!modalEl.hidden) closeModal(); return; }
@@ -460,9 +582,9 @@ window.addEventListener("hashchange", () => {
   if (rec) openModalForRecord(rec);
 });
 
-/* ---------------------------
-   Pagination + controls
----------------------------- */
+/* -------------------------------------------------
+   Controls: search, filters, pagination, fuzzy toggle
+-------------------------------------------------- */
 function debounce(fn, ms=200) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 searchEl.addEventListener("input", debounce((e) => { currentQuery = e.target.value; applyFilters(); }));
 roleEl.addEventListener("change", (e) => { currentRole = e.target.value; applyFilters(); });
@@ -471,9 +593,9 @@ prevBtn.addEventListener("click", () => { currentPage = Math.max(1, currentPage 
 nextBtn.addEventListener("click", () => { currentPage += 1; render(); });
 fuzzyToggle.addEventListener("change", (e) => { fuzzyEnabled = e.target.checked; applyFilters(); });
 
-/* ---------------------------
+/* -------------------------------------------------
    Contact + CTA (existing)
----------------------------- */
+-------------------------------------------------- */
 document.getElementById("contact-form").addEventListener("submit", async function (e) {
   e.preventDefault();
   const formData = { name: this.name.value, email: this.email.value, message: this.message.value };
@@ -488,7 +610,7 @@ document.getElementById("contact-form").addEventListener("submit", async functio
 });
 document.getElementById("cta-button").addEventListener("click", () => { alert("Welcome aboard! Let's build your starry website ⭐️"); });
 
-/* ---------------------------
+/* -------------------------------------------------
    Boot
----------------------------- */
+-------------------------------------------------- */
 loadCSVFile();
