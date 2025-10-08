@@ -1,12 +1,8 @@
 // === GOOGLE SHEETS (Published CSV) CONFIG ===
 const SHEET_CSV_URL =
-  // "https://docs.google.com/spreadsheets/d/<<SHEET_ID>>/export?format=csv&gid=<<GID>>";
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTW0dfyxzzttB8ukYBZS8UygpXaRllwKctevJKB4-6mSFst21f36MEBbKa5pHhur5eUFRfr84UfcuGa/pub?gid=0&single=true&output=csv";
 
-// Optional: disable browser caches for fresher reads
 const CSV_FETCH_OPTS = { cache: "no-store" };
-
-// Optional: add a cache-buster query each fetch (helps defeat intermediary caches)
 function withCacheBuster(url) {
   const u = new URL(url);
   u.searchParams.set("_cb", Date.now().toString());
@@ -28,62 +24,18 @@ function parseCSV(csv) {
 
     if (inQuotes) {
       if (ch === '"') {
-        // Escaped quote "" -> a single "
-        if (csv[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        // End of quoted section
-        inQuotes = false;
-        i++;
-        continue;
+        if (csv[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
       }
-      // Any character (including \n) inside quotes is literal
-      field += ch;
-      i++;
-      continue;
+      field += ch; i++; continue;
     }
 
-    // Not in quotes
-    if (ch === '"') {
-      inQuotes = true;
-      i++;
-      continue;
-    }
-    if (ch === ",") {
-      row.push(field);
-      field = "";
-      i++;
-      continue;
-    }
-    if (ch === "\r") {
-      // Handle CRLF or lone CR
-      if (csv[i + 1] === "\n") i++;
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      i++;
-      continue;
-    }
-    if (ch === "\n") {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = "";
-      i++;
-      continue;
-    }
+    if (ch === '"') { inQuotes = true; i++; continue; }
+    if (ch === ",") { row.push(field); field = ""; i++; continue; }
+    if (ch === "\r") { if (csv[i + 1] === "\n") i++; row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+    if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
 
-    field += ch;
-    i++;
-  }
-
-  // Flush last field/row if any
-  if (inQuotes) {
-    // Malformed CSV (unterminated quote) — still push what we have
-    inQuotes = false;
+    field += ch; i++;
   }
   row.push(field);
   if (row.length > 1 || row[0] !== "") rows.push(row);
@@ -98,185 +50,113 @@ function parseCSV(csv) {
 }
 
 /* ---------------------------
-   Fuzzy match helpers
+   Fuzzy helpers
 ---------------------------- */
-// Basic Levenshtein distance for fuzzy scoring
 function levenshtein(a, b) {
-  a = a.toLowerCase();
-  b = b.toLowerCase();
+  a = a.toLowerCase(); b = b.toLowerCase();
   const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
   for (let j = 1; j <= b.length; j++) dp[0][j] = j;
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {
-      dp[i][j] = Math.min(
-        dp[i - 1][j] + 1, // delete
-        dp[i][j - 1] + 1, // insert
-        dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1) // replace
-      );
+      dp[i][j] = Math.min(dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
     }
   }
   return dp[a.length][b.length];
 }
-
-// Score a record against a query; higher is better
 function scoreRecord(rec, q) {
   const text = `${rec.name} ${rec.role} ${rec.message}`.toLowerCase();
-  const query = q.toLowerCase().trim();
-  if (!query) return { score: 0, fuzzy: false };
-
-  // Exact token hits: +3 each
-  const tokens = query.split(/\s+/).filter(Boolean);
-  let score = 0;
-  let anyExact = false;
-
+  const tokens = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return { score: 0, fuzzy: false };
+  let score = 0, anyExact = false;
   for (const t of tokens) {
-    if (text.includes(t)) {
-      score += 3;
-      anyExact = true;
-    } else {
-      // fuzzy: compare against each word-ish chunk in text; take best
+    if (text.includes(t)) { score += 3; anyExact = true; }
+    else {
       const chunks = text.split(/[^a-z0-9]+/i);
       let best = Infinity;
-      for (const c of chunks) {
-        if (!c) continue;
-        const d = levenshtein(t, c);
-        if (d < best) best = d;
-      }
-      // Reward near matches (distance 1–2) modestly
-      if (best === 1) score += 2;
-      else if (best === 2) score += 1;
+      for (const c of chunks) { if (!c) continue; const d = levenshtein(t, c); if (d < best) best = d; }
+      if (best === 1) score += 2; else if (best === 2) score += 1;
     }
   }
   return { score, fuzzy: !anyExact && score > 0 };
 }
 
 /* ---------------------------
-   Highlight helper (exact hits for plain text)
-   Used for name/role fields.
+   Plain text highlighter (name/role)
 ---------------------------- */
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
 }
 function highlightExact(text, query) {
   if (!query.trim()) return escapeHTML(text);
-  const tokens = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); // escape regex chars
-
+  const tokens = query.toLowerCase().split(/\s+/).filter(Boolean).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!tokens.length) return escapeHTML(text);
-
   const rx = new RegExp("(" + tokens.join("|") + ")", "gi");
   return escapeHTML(text).replace(rx, (m) => `<mark>${escapeHTML(m)}</mark>`);
 }
 
 /* ---------------------------
-   Safe HTML + HTML-aware highlighting for message
-   (allows class on whitelisted tags, and safe <a href>)
+   Safe HTML + HTML-aware highlighting (message / modal fields)
 ---------------------------- */
-
-// Allowed tags (allow only class attribute globally + special href for <a>)
 const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG", "A", "SPAN"]);
-
-// Validate http/https URL
 function isSafeHttpUrl(url) {
-  try {
-    const u = new URL(url, window.location.origin);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
+  try { const u = new URL(url, window.location.origin); return u.protocol === "http:" || u.protocol === "https:"; }
+  catch { return false; }
 }
-
-// Sanitize "class" value: keep simple tokens (letters/numbers/_/-), drop others
 function sanitizeClassValue(raw) {
   if (!raw) return "";
-  const tokens = raw
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter(t => /^[A-Za-z0-9_-]{1,64}$/.test(t));
-  return tokens.join(" ");
+  return raw.split(/\s+/).filter(Boolean).filter(t => /^[A-Za-z0-9_-]{1,64}$/.test(t)).join(" ");
 }
-
-// Decode &lt; &gt; &amp; etc. from CSV before sanitizing
 function decodeEntities(str) {
   if (!str) return "";
-  const el = document.createElement("textarea");
-  el.innerHTML = str;
-  return el.value;
+  const el = document.createElement("textarea"); el.innerHTML = str; return el.value;
 }
-
-// If a cell has no HTML tags, convert newlines to <br> so they render
 function normalizeMultilinePlainText(str) {
   if (!str) return "";
-  // If it looks like HTML already, don't touch it
-  if (/[<][a-zA-Z]/.test(str)) return str;
+  if (/[<][a-zA-Z]/.test(str)) return str; // looks like HTML already
   return str.replace(/\r?\n/g, "<br>");
 }
-
-// Sanitize: keep only allowed tags; keep only class (sanitized);
-// for <a> also keep vetted href + add rel/target; unwrap disallowed tags.
 function sanitizeBasicHTML(input) {
   if (!input) return "";
   const root = document.createElement("div");
   root.innerHTML = input;
-
   (function sanitize(node) {
     [...node.childNodes].forEach((child) => {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const tag = child.tagName.toUpperCase();
-
         if (!ALLOWED_TAGS.has(tag)) {
-          // unwrap element (preserve children, drop the element)
           while (child.firstChild) node.insertBefore(child.firstChild, child);
           node.removeChild(child);
           return;
         }
-
-        // Capture whitelisted attributes before strip
         const rawClass = child.getAttribute("class") || "";
         const cleanClass = sanitizeClassValue(rawClass);
 
         if (tag === "A") {
           const href = child.getAttribute("href") || "";
-          // strip everything
           [...child.attributes].forEach((a) => child.removeAttribute(a.name));
-
           if (isSafeHttpUrl(href)) {
             child.setAttribute("href", href);
             child.setAttribute("target", "_blank");
             child.setAttribute("rel", "noopener noreferrer");
           } else {
-            // unsafe/missing href -> unwrap link entirely
             while (child.firstChild) node.insertBefore(child.firstChild, child);
             node.removeChild(child);
             return;
           }
-
           if (cleanClass) child.setAttribute("class", cleanClass);
         } else {
-          // Non-<a> allowed tags: strip everything, then restore class if present
           [...child.attributes].forEach((a) => child.removeAttribute(a.name));
           if (cleanClass) child.setAttribute("class", cleanClass);
         }
-
-        // Recurse into children
         sanitize(child);
       } else if (child.nodeType === Node.COMMENT_NODE) {
         node.removeChild(child);
       }
-      // text nodes are fine
     });
   })(root);
-
   return root.innerHTML;
 }
-
-// Highlight matches inside TEXT nodes only, preserving HTML structure
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function highlightHTML(html, query) {
   if (!query || !query.trim()) return html;
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -287,96 +167,56 @@ function highlightHTML(html, query) {
   container.innerHTML = html;
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const textNodes = [];
-  let n;
-  while ((n = walker.nextNode())) textNodes.push(n);
+  const texts = [];
+  let n; while ((n = walker.nextNode())) texts.push(n);
 
-  textNodes.forEach((txt) => {
-    const val = txt.nodeValue;
-    if (!rx.test(val)) return;
+  texts.forEach((txt) => {
+    const val = txt.nodeValue; if (!rx.test(val)) return;
     const frag = document.createDocumentFragment();
-    let lastIndex = 0;
-    val.replace(rx, (m, _g1, idx) => {
-      if (idx > lastIndex) frag.appendChild(document.createTextNode(val.slice(lastIndex, idx)));
-      const mark = document.createElement("mark");
-      mark.textContent = m;
+    let last = 0;
+    val.replace(rx, (m, _g, i) => {
+      if (i > last) frag.appendChild(document.createTextNode(val.slice(last, i)));
+      const mark = document.createElement("mark"); mark.textContent = m;
       frag.appendChild(mark);
-      lastIndex = idx + m.length;
+      last = i + m.length;
     });
-    if (lastIndex < val.length) frag.appendChild(document.createTextNode(val.slice(lastIndex)));
+    if (last < val.length) frag.appendChild(document.createTextNode(val.slice(last)));
     txt.parentNode.replaceChild(frag, txt);
   });
-
   return container.innerHTML;
 }
 
-
-// --- DATE HELPERS (treat event as "past" the day AFTER its date) ---
-
-// get a value by trying multiple field names (case-insensitive)
+/* ---------------------------
+   Date helpers + case-insensitive field access
+---------------------------- */
 function getFieldCI(obj, candidates) {
-  const map = Object.keys(obj).reduce((m, k) => {
-    m[k.toLowerCase()] = obj[k];
-    return m;
-  }, {});
+  const map = Object.keys(obj).reduce((m, k) => (m[k.toLowerCase()] = obj[k], m), {});
   for (const c of candidates) {
     const v = map[c.toLowerCase()];
     if (v != null && v !== "") return String(v);
   }
   return "";
 }
-
-// Parse common date formats into a local Date set to midnight
-// Supports: YYYY-MM-DD, DD/MM/YYYY, D/M/YYYY, and raw Date.parse as fallback.
 function parseCompetitionDate(dateStr) {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
-
-  // If there's time, strip to date part
   const dateOnly = s.split(/[T\s]/)[0];
-
-  // ISO 2025-07-14
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/;
-  const mIso = dateOnly.match(iso);
-  if (mIso) {
-    const [_, y, mo, d] = mIso;
-    const dt = new Date(Number(y), Number(mo) - 1, Number(d));
-    dt.setHours(0, 0, 0, 0);
-    return dt;
-  }
-
-  // UK style 14/07/2025 or 7/1/2025
-  const uk = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
-  const mUk = dateOnly.match(uk);
-  if (mUk) {
-    const [_, d, mo, y] = mUk;
-    const dt = new Date(Number(y), Number(mo) - 1, Number(d));
-    dt.setHours(0, 0, 0, 0);
-    return dt;
-  }
-
-  // Fallback to Date.parse (browser may assume mm/dd/yyyy)
+  const mIso = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (mIso) { const [_, y, mo, d] = mIso; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
+  const mUk = dateOnly.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mUk) { const [_, d, mo, y] = mUk; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
   const parsed = new Date(s);
-  if (!isNaN(parsed)) {
-    parsed.setHours(0, 0, 0, 0);
-    return parsed;
-  }
+  if (!isNaN(parsed)) { parsed.setHours(0,0,0,0); return parsed; }
   return null;
 }
-
-// Returns true if event date is strictly before today's date (local)
-// i.e., an event ON today's date is still "not past" until tomorrow
 function isPastDate(eventDate) {
   if (!eventDate) return false;
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  return eventDate < todayStart;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return eventDate < today;
 }
 
-
-
 /* ---------------------------
-   State
+   State & DOM refs
 ---------------------------- */
 let allRecords = [];
 let filtered = [];
@@ -386,9 +226,6 @@ let currentRole = "";
 let currentQuery = "";
 let fuzzyEnabled = false;
 
-/* ---------------------------
-   DOM refs
----------------------------- */
 const listEl = document.getElementById("data-list");
 const searchEl = document.getElementById("search-input");
 const roleEl = document.getElementById("role-filter");
@@ -397,8 +234,9 @@ const prevBtn = document.getElementById("prev-page");
 const nextBtn = document.getElementById("next-page");
 const pageInfo = document.getElementById("page-info");
 const resultCount = document.getElementById("result-count");
-//const fuzzyToggle = document.getElementById("fuzzy-hint") ? document.getElementById("fuzzy-toggle") : document.getElementById("fuzzy-toggle"; // keep existing wiring
+const fuzzyToggle = document.getElementById("fuzzy-toggle");
 const fuzzyHint = document.getElementById("fuzzy-hint");
+document.getElementById("refresh-sheet")?.addEventListener("click", () => loadCSVFile());
 
 /* ---------------------------
    Fetch + init
@@ -408,23 +246,23 @@ async function loadCSVFile() {
     const res = await fetch(withCacheBuster(SHEET_CSV_URL), CSV_FETCH_OPTS);
     if (!res.ok) throw new Error(`CSV HTTP ${res.status}`);
     const text = await res.text();
-
-    // Parse CSV robustly (preserves multi-line cells)
     allRecords = parseCSV(text);
 
-    // Rebuild the role dropdown
+    // Build role dropdown (or competition type, etc.)
     const roles = [...new Set(allRecords.map(r => r.role).filter(Boolean))].sort();
     roleEl.innerHTML = '<option value="">All roles</option>';
-    roles.forEach(r => {
-      const opt = document.createElement("option");
-      opt.value = r; opt.textContent = r;
-      roleEl.appendChild(opt);
-    });
+    roles.forEach(r => { const opt = document.createElement("option"); opt.value = r; opt.textContent = r; roleEl.appendChild(opt); });
 
     applyFilters();
+
+    // Open deep link if present (#<id>)
+    const hashId = location.hash.replace(/^#/, "");
+    if (hashId) {
+      const rec = findRecordById(hashId);
+      if (rec) openModalForRecord(rec);
+    }
   } catch (err) {
     console.error("Failed to load Google Sheet CSV:", err);
-    // graceful UI message (optional)
     listEl.innerHTML = `<li style="color:#b91c1c">Failed to load data. Check your Sheet URL or publish settings.</li>`;
   }
 }
@@ -435,24 +273,18 @@ async function loadCSVFile() {
 function applyFilters() {
   const q = currentQuery.trim().toLowerCase();
 
-  // 1) role filter
   let temp = currentRole
     ? allRecords.filter(r => (r.role || "").toLowerCase() === currentRole.toLowerCase())
     : [...allRecords];
 
-  // 2) search (exact or fuzzy)
   if (!q) {
     filtered = temp;
   } else if (!fuzzyEnabled) {
-    filtered = temp.filter(r =>
-      Object.values(r).some(val => (val || "").toLowerCase().includes(q))
-    );
+    filtered = temp.filter(r => Object.values(r).some(val => (val || "").toLowerCase().includes(q)));
   } else {
-    // fuzzy: keep items with positive score, sort by score desc
-    const scored = temp
-      .map(rec => ({ rec, s: scoreRecord(rec, q) }))
-      .filter(x => x.s.score > 0)
-      .sort((a, b) => b.s.score - a.s.score);
+    const scored = temp.map(rec => ({ rec, s: scoreRecord(rec, q) }))
+                       .filter(x => x.s.score > 0)
+                       .sort((a,b)=> b.s.score - a.s.score);
     filtered = scored.map(x => ({ ...x.rec, __fuzzy: x.s.fuzzy }));
   }
 
@@ -474,29 +306,28 @@ function render() {
   listEl.innerHTML = "";
   for (const rec of slice) {
     const fuzzyTag = rec.__fuzzy ? '<span class="badge fuzzy" title="Approximate match">≈ fuzzy</span>' : "";
-    const name = highlightExact(rec.name || "", currentQuery);
-    const role = highlightExact(rec.role || "", currentQuery);
+    const name = highlightExact(rec.name || rec.title || "Untitled", currentQuery);
+    const role = highlightExact(rec.role || rec.type || "", currentQuery);
 
-    // Message pipeline (you already have this):
-    const raw = rec.message || "";
+    // message preview
+    const raw = rec.message || rec.overview || "";
     const decoded = decodeEntities(raw);
     const withBreaks = normalizeMultilinePlainText(decoded);
     const safeMsg = sanitizeBasicHTML(withBreaks);
     const msg = highlightHTML(safeMsg, currentQuery);
 
-    // 🎯 NEW: find a date field and decide if it's past
-    // Try common headers like: date, competition_date, comp_date, event_date, Date
+    // date logic
     const dateStr = getFieldCI(rec, ["date", "competition_date", "comp_date", "event_date", "Date"]);
     const eventDate = parseCompetitionDate(dateStr);
     const past = isPastDate(eventDate);
+    const playedBadge = past ? '<span class="badge past" title="Completed">Played</span>' : "";
+
+    // id/slug (needed for deep-link + modal)
+    const id = getFieldCI(rec, ["id", "slug", "uid"]) || makeSlug(rec.name || rec.title || "item");
 
     const li = document.createElement("li");
-
-    // Add class if past
     if (past) li.classList.add("is-past");
-
-    // (optional) add a "Played" badge when past
-    const playedBadge = past ? '<span class="badge past" title="Completed">Played</span>' : "";
+    li.dataset.id = id;
 
     li.innerHTML = `
       <div class="entry-top">
@@ -512,67 +343,133 @@ function render() {
       </div>
       ${eventDate ? `<div class="muted" style="margin-top:.25rem;">${escapeHTML(dateStr)}</div>` : ""}
       <div class="entry-msg">${msg}</div>
+      <div style="margin-top:.6rem;">
+        <button class="view-btn" data-view="${id}" aria-label="View details for ${escapeHTML(rec.name || rec.title || "item")}">View details</button>
+      </div>
     `;
     listEl.appendChild(li);
   }
 
-  // Meta + pagination controls
   resultCount.textContent = `${total} result${total === 1 ? "" : "s"}`;
   pageInfo.textContent = `Page ${currentPage} / ${pages}`;
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= pages;
+  fuzzyHint.textContent = fuzzyEnabled ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted." : "";
 
-  // Fuzzy hint
-  if (fuzzyHint) {
-    fuzzyHint.textContent = fuzzyEnabled
-      ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted."
-      : "";
-  }
+  // wire detail buttons
+  listEl.querySelectorAll("[data-view]").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const id = e.currentTarget.getAttribute("data-view");
+      const rec = findRecordById(id);
+      if (rec) openModalForRecord(rec);
+    });
+  });
+}
+
+function makeSlug(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
 }
 
 /* ---------------------------
-   Events (with debounce)
+   Modal: open/close, populate, deep-link
 ---------------------------- */
-function debounce(fn, ms=200) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
+const modalEl = document.getElementById("record-modal");
+const modalCloseBtn = document.getElementById("modal-close");
+const modalTitle = document.getElementById("modal-title");
+const modalMeta = document.getElementById("modal-meta");
+const modalDetails = document.getElementById("modal-details");
+const modalRules = document.getElementById("modal-rules");
+const modalProcedures = document.getElementById("modal-procedures");
+
+let lastFocus = null;
+
+function findRecordById(id) {
+  if (!id) return null;
+  // try id/slug/uid columns; else match our generated slug from name/title
+  return allRecords.find(r => {
+    const rid = getFieldCI(r, ["id", "slug", "uid"]);
+    if (rid && rid === id) return true;
+    const alt = makeSlug(r.name || r.title || "item");
+    return alt === id;
+  }) || null;
 }
 
-searchEl.addEventListener("input", debounce((e) => {
-  currentQuery = e.target.value;
-  applyFilters();
-}));
+function openModalForRecord(rec) {
+  // title
+  const title = rec.name || rec.title || "Details";
+  modalTitle.textContent = title;
 
-roleEl.addEventListener("change", (e) => {
-  currentRole = e.target.value;
-  applyFilters();
-});
+  // meta (date, location, type)
+  const dateStr = getFieldCI(rec, ["date", "competition_date", "comp_date", "event_date"]);
+  const location = getFieldCI(rec, ["location", "course", "venue"]);
+  const type = getFieldCI(rec, ["role", "type", "category"]);
+  const metaParts = [];
+  if (dateStr) metaParts.push(`📅 ${escapeHTML(dateStr)}`);
+  if (location) metaParts.push(`📍 ${escapeHTML(location)}`);
+  if (type) metaParts.push(`🏷️ ${escapeHTML(type)}`);
+  modalMeta.innerHTML = metaParts.join(" &nbsp;•&nbsp; ") || "";
 
-pageSizeEl.addEventListener("change", (e) => {
-  pageSize = parseInt(e.target.value, 10) || 10;
-  currentPage = 1;
-  render();
-});
+  // content fields (may contain HTML)
+  const decodedDetails = decodeEntities(getFieldCI(rec, ["details", "overview", "description"]));
+  const decodedRules = decodeEntities(getFieldCI(rec, ["rules", "competition_rules"]));
+  const decodedProcedures = decodeEntities(getFieldCI(rec, ["procedures", "procedure", "how_to_enter"]));
 
-prevBtn.addEventListener("click", () => {
-  currentPage = Math.max(1, currentPage - 1);
-  render();
-});
-nextBtn.addEventListener("click", () => {
-  currentPage += 1;
-  render();
-});
+  const detailsHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodedDetails));
+  const rulesHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodedRules));
+  const proceduresHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodedProcedures));
 
-const fuzzyToggle = document.getElementById("fuzzy-toggle");
-if (fuzzyToggle) {
-  fuzzyToggle.addEventListener("change", (e) => {
-    fuzzyEnabled = e.target.checked;
-    applyFilters();
-  });
+  modalDetails.innerHTML = detailsHTML || "<em class='muted'>No details.</em>";
+  modalRules.innerHTML = rulesHTML || "<em class='muted'>No rules.</em>";
+  modalProcedures.innerHTML = proceduresHTML || "<em class='muted'>No procedures.</em>";
+
+  // show modal
+  lastFocus = document.activeElement;
+  modalEl.hidden = false;
+  document.body.style.overflow = "hidden";
+
+  // set hash (deep-link)
+  const id = getFieldCI(rec, ["id", "slug", "uid"]) || makeSlug(rec.name || rec.title || "item");
+  history.pushState({ id }, "", "#" + id);
+
+  // focus trap (simple): focus close button
+  modalCloseBtn.focus();
 }
+
+function closeModal() {
+  modalEl.hidden = true;
+  document.body.style.overflow = "";
+  // clear hash if it matches an id
+  if (location.hash) history.pushState({}, "", location.pathname + location.search);
+  // restore focus
+  if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
+}
+
+modalCloseBtn.addEventListener("click", closeModal);
+modalEl.addEventListener("click", (e) => {
+  if (e.target.matches(".modal__backdrop") || e.target.dataset.close === "backdrop") closeModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (!modalEl.hidden && e.key === "Escape") closeModal();
+});
+
+// Open modal if user navigates to a hash (back/forward or manual)
+window.addEventListener("hashchange", () => {
+  const id = location.hash.replace(/^#/, "");
+  if (!id) { if (!modalEl.hidden) closeModal(); return; }
+  const rec = findRecordById(id);
+  if (rec) openModalForRecord(rec);
+});
+
+/* ---------------------------
+   Pagination + controls
+---------------------------- */
+function debounce(fn, ms=200) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
+searchEl.addEventListener("input", debounce((e) => { currentQuery = e.target.value; applyFilters(); }));
+roleEl.addEventListener("change", (e) => { currentRole = e.target.value; applyFilters(); });
+pageSizeEl.addEventListener("change", (e) => { pageSize = parseInt(e.target.value, 10) || 10; currentPage = 1; render(); });
+prevBtn.addEventListener("click", () => { currentPage = Math.max(1, currentPage - 1); render(); });
+nextBtn.addEventListener("click", () => { currentPage += 1; render(); });
+fuzzyToggle.addEventListener("change", (e) => { fuzzyEnabled = e.target.checked; applyFilters(); });
 
 /* ---------------------------
    Contact + CTA (existing)
@@ -580,13 +477,8 @@ if (fuzzyToggle) {
 document.getElementById("contact-form").addEventListener("submit", async function (e) {
   e.preventDefault();
   const formData = { name: this.name.value, email: this.email.value, message: this.message.value };
-
   try {
-    const res = await fetch("/api/contact", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formData)
-    });
+    const res = await fetch("/api/contact", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(formData) });
     const data = await res.json();
     document.getElementById("response-msg").textContent = data.message;
   } catch (err) {
@@ -594,10 +486,7 @@ document.getElementById("contact-form").addEventListener("submit", async functio
     console.error("Error submitting contact:", err);
   }
 });
-
-document.getElementById("cta-button").addEventListener("click", () => {
-  alert("Welcome aboard! Let's build your starry website ⭐️");
-});
+document.getElementById("cta-button").addEventListener("click", () => { alert("Welcome aboard! Let's build your starry website ⭐️"); });
 
 /* ---------------------------
    Boot
