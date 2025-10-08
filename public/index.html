@@ -57,18 +57,10 @@
   </section>
 
   <section id="data-section" class="data-section">
-    <h2>📁 Team Directory</h2>
+    <h2>📁 Team / Competitions</h2>
 
-    <!-- Controls -->
     <div class="controls">
-      <input
-        type="text"
-        id="search-input"
-        placeholder="Search by name, role, or message..."
-        class="search-box"
-        aria-label="Search text"
-      />
-
+      <input type="text" id="search-input" placeholder="Search..." class="search-box" aria-label="Search text"/>
       <select id="role-filter" class="select">
         <option value="">All roles</option>
       </select>
@@ -84,24 +76,49 @@
         <option value="10" selected>10 / page</option>
         <option value="20">20 / page</option>
       </select>
+
+      <button id="refresh-sheet" class="page-btn" title="Reload from Google Sheet">↻ Refresh</button>
     </div>
 
-    <!-- Results meta -->
     <div class="results-meta">
       <span id="result-count">0 results</span>
       <span id="fuzzy-hint" class="muted"></span>
     </div>
 
-    <!-- List -->
     <ul id="data-list"></ul>
 
-    <!-- Pagination -->
     <div class="pagination">
       <button id="prev-page" class="page-btn" disabled>« Prev</button>
       <span id="page-info">Page 1 / 1</span>
       <button id="next-page" class="page-btn" disabled>Next »</button>
     </div>
   </section>
+
+  <!-- ✅ Accessible Modal for Record Details -->
+  <div id="record-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+    <div class="modal__backdrop" data-close="backdrop"></div>
+    <div class="modal__dialog" role="document">
+      <button class="modal__close" aria-label="Close" id="modal-close">✕</button>
+      <h3 id="modal-title" class="modal__title">Details</h3>
+
+      <div class="modal__meta" id="modal-meta"></div>
+
+      <div class="modal__section">
+        <h4 class="modal__section-title">Overview</h4>
+        <div id="modal-details" class="modal__content"></div>
+      </div>
+
+      <div class="modal__section">
+        <h4 class="modal__section-title">Rules</h4>
+        <div id="modal-rules" class="modal__content"></div>
+      </div>
+
+      <div class="modal__section">
+        <h4 class="modal__section-title">Procedures</h4>
+        <div id="modal-procedures" class="modal__content"></div>
+      </div>
+    </div>
+  </div>
 
   <footer class="footer">
     <p>&copy; 2025 StarryWeb. All rights reserved.</p>
