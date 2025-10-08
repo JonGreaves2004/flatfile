@@ -65,6 +65,7 @@ mark { background:#fff59d; padding:0 .1rem; border-radius:3px; }
   .results-meta { flex-direction:column; gap:0.25rem; align-items:flex-start; }
 }
 
+/* ...your existing styles above... */
 
 /* Dim past competitions */
 #data-list li.is-past {
@@ -72,10 +73,68 @@ mark { background:#fff59d; padding:0 .1rem; border-radius:3px; }
   transition: opacity 0.2s ease;
 }
 
-/* (optional) a subtle badge */
 .badge.past {
   background: #f3f4f6;
   color: #374151;
   border: 1px solid #e5e7eb;
 }
+
+/* View details button look */
+.view-btn {
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.view-btn:hover { background:#f8fafc; }
+
+/* ✅ Modal */
+.modal[hidden] { display: none !important; }
+.modal {
+  position: fixed; inset: 0;
+  display: grid; place-items: center;
+  z-index: 10000;
+}
+.modal__backdrop {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(1px);
+}
+.modal__dialog {
+  position: relative;
+  max-width: min(880px, 92vw);
+  max-height: 86vh;
+  overflow:auto;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+.modal__close {
+  position: absolute; top: 0.6rem; right: 0.6rem;
+  background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 8px; padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+.modal__title {
+  font-size: 1.4rem;
+  margin: 0 1.8rem 0.75rem 0;
+}
+.modal__meta {
+  color:#475569; font-size:0.95rem; margin-bottom:1rem;
+}
+.modal__section { margin-bottom: 1.1rem; }
+.modal__section-title {
+  font-size: 1rem; color:#1f2937; margin-bottom: 0.4rem;
+}
+.modal__content {
+  background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px;
+  padding:0.8rem 0.9rem; color:#111;
+}
+
+/* Ensure any custom classes from Sheets don't leak globally */
+#record-modal .modal__content * { max-width: 100%; }
 
