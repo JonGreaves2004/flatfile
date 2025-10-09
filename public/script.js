@@ -86,6 +86,16 @@ const MODAL_CONFIG = [
       { label: "Sweep breakdown",       header: "Sweep breakdown" },
       { label: "Course Cards",          header: "Course Cards" }
     ]
+  },
+   {
+    title: "Payments",
+    type: "list",
+    items: [
+      { label: "Criteria for Prizewinners", header: "Criteria for Prizewinners" },
+      { label: "2's competition",           header: "2's comp" },
+      { label: "Merit Shield Contributor",  header: "Merit Shield Contributer" },
+      { label: "Trophy",                    header: "Trophy" }
+    ]
   }
 ];
 
