@@ -138,3 +138,64 @@ mark { background:#fff59d; padding:0 .1rem; border-radius:3px; }
 /* Ensure any custom classes from Sheets don't leak globally */
 #record-modal .modal__content * { max-width: 100%; }
 
+/* ================================
+   🧩 Modal Key–Value Grid Layout
+   Used for: .kv-list inside modal
+=================================== */
+
+.kv-list {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 0.4rem 1rem;           /* row-gap, column-gap */
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  border-top: 1px solid var(--border, #ddd);
+}
+
+.kv-list li {
+  display: contents;          /* grid children align across columns */
+}
+
+.kv-list li strong {
+  grid-column: 1;             /* label */
+  text-align: right;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+  padding-right: 0.5rem;
+}
+
+.kv-list li .kv-value {
+  grid-column: 2;             /* value */
+  color: #222;
+}
+
+.kv-list li .kv-value p {
+  margin: 0.2rem 0;
+}
+
+.kv-list li mark {
+  background: #ffedb3;
+  color: #000;
+  padding: 0 0.15em;
+  border-radius: 0.2em;
+}
+
+/* Responsive tweak: stack vertically on narrow screens */
+@media (max-width: 600px) {
+  .kv-list {
+    grid-template-columns: 1fr;
+  }
+
+  .kv-list li strong {
+    text-align: left;
+    padding-right: 0;
+  }
+}
+
+.kv-list li:nth-child(odd) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+
