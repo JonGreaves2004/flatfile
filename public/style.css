@@ -159,7 +159,6 @@ mark { background:#fff59d; padding:0 .1rem; border-radius:3px; }
   grid-column: 1;             /* label */
   text-align: right;
   font-weight: 600;
-  color: #555;
   white-space: nowrap;
   padding-right: 0.5rem;
 }
