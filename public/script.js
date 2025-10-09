@@ -9,65 +9,50 @@ function withCacheBuster(url) {
   return u.toString();
 }
 
-/* =================================================
-   🔐 ADMIN MODE (POC)
-================================================= */
-const ADMIN_PASSPHRASE = "letmein"; // ⚠️ Front-end only POC. DO NOT use for real security.
+// --- Admin mode: URL-driven only (?admin=1) ---
 function isAdmin() {
-  // server may optionally inject window.__ADMIN__ = true; (ignored if absent)
-  if (typeof window.__ADMIN__ === "boolean") return window.__ADMIN__;
-  return localStorage.getItem("admin_mode") === "1";
-}
-function setAdmin(on) {
-  if (on) localStorage.setItem("admin_mode", "1");
-  else localStorage.removeItem("admin_mode");
-  // re-render modal if open
-  if (!modalEl.hidden && currentOpenId) {
-    const rec = findRecordById(currentOpenId);
-    if (rec) openModalForRecord(rec, /*pushHash*/ false);
-  }
+  return new URLSearchParams(location.search).get("admin") === "1";
 }
 
 /* =================================================
    🔧 CONFIG: CARD FIELDS + CONFIGURABLE MODAL
 ================================================= */
+// Map your sheet columns to core fields (case-insensitive)
 const FIELD_MAP = {
   id:     ["id", "uid", "slug", "competition_id"],
   title:  ["Comp name"],
   date:   ["Date"],
   type:   ["Comp format (scoring type)", "Comp format"],
-  overview: ["Comp Summary", "Comp Description"],
-  details:  ["Comp Description", "Comp Summary"],
-  link:   ["link", "url", "website", "info_url"]
+  overview: ["Comp Summary", "Comp Description"],      // short card text
+  details:  ["Comp Description", "Comp Summary"],      // overview body (modal)
+  link:   ["link", "url", "website", "info_url"]       // optional; shows a badge
 };
 
 /*
-  MODAL_CONFIG: decide exactly what each audience sees.
-  - type: "rich" (one HTML field) or "list" (label:value items)
-  - For "list" items you can mark adminOnly: true to hide from public.
-  - For "rich" you can set adminFields (fallback list for admins) and fields (for public).
-
-  You can add more sections if you add containers in HTML, or reuse the three we have:
-  Overview -> #modal-details, Rules -> #modal-rules, Procedures -> #modal-procedures
+  MODAL_CONFIG: fully controls what appears in the modal.
+  - "rich" section picks first non-empty field from `fields` (or `adminFields` for admin).
+  - "list" section shows label:value lines from `items`.
+  - Mark any list item with { adminOnly: true } to hide from public view.
+  You can edit labels, headers, order — or add/remove sections as you like.
 */
 const MODAL_CONFIG = [
   {
     title: "Overview",
     type: "rich",
-    fields: ["Comp Description", "Comp Summary"],         // public/fallback
-    adminFields: ["Comp Description", "Comp Summary"]     // admin fallback (same here, but you can change)
+    fields: ["Comp Description", "Comp Summary"],
+    adminFields: ["Comp Description", "Comp Summary"] // can differ from public if you want
   },
   {
     title: "Rules",
     type: "list",
     items: [
-      // Public items
+      // Public
       { label: "Entrant criteria",          header: "Entrant criteria" },
       { label: "Acceptable for Handicap",   header: "Acceptable for Handicap" },
       { label: "Handicap Limit",            header: "Handicap Limit" },
       { label: "Handicap Allowance",        header: "Handicap Allowance" },
       { label: "Divisions",                 header: "Divisions" },
-      // Admin-only items
+      // Admin-only extras
       { label: "Board Competition",         header: "Board Comp", adminOnly: true },
       { label: "Criteria for Prizewinners", header: "Criteria for Prizewinners", adminOnly: true },
       { label: "2's competition",           header: "2's comp", adminOnly: true },
@@ -79,14 +64,14 @@ const MODAL_CONFIG = [
     title: "Procedures",
     type: "list",
     items: [
-      // Public items
+      // Public
       { label: "Start Sheet",           header: "Start Sheet" },
       { label: "1st & last tee times",  header: "1st & last tee times" },
       { label: "Players per time",      header: "Players per time" },
       { label: "Interval",              header: "Interval (10 Mins)" },
       { label: "Sign in options",       header: "Sign in options" },
       { label: "Score entry",           header: "Score entry" },
-      // Admin-only items (operational/financial bits)
+      // Admin-only extras
       { label: "Booking options",       header: "Enable booking options", adminOnly: true },
       { label: "Booking window",        header: "Enabled from and to", adminOnly: true },
       { label: "Zones for drawn comps", header: "Zones for drawn comps", adminOnly: true },
@@ -105,7 +90,7 @@ const MODAL_CONFIG = [
 ];
 
 /* ================================================
-   Robust CSV parser (handles quoted newlines)
+   Robust CSV parser (handles quoted newlines, quotes)
 ================================================ */
 function parseCSV(csv) {
   const rows = [];
@@ -210,7 +195,7 @@ function scoreRecord(rec, q) {
 }
 
 /* ================================================
-   Highlight helpers
+   Plain text highlight (card title/type)
 ================================================ */
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
@@ -224,7 +209,7 @@ function highlightExact(text, query) {
 }
 
 /* ================================================
-   Safe HTML pipeline
+   Safe HTML pipeline (modal content)
 ================================================ */
 const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG", "A", "SPAN"]);
 function isSafeHttpUrl(url) {
@@ -241,7 +226,7 @@ function decodeEntities(str) {
 }
 function normalizeMultilinePlainText(str) {
   if (!str) return "";
-  if (/[<][a-zA-Z]/.test(str)) return str;
+  if (/[<][a-zA-Z]/.test(str)) return str; // looks like HTML already
   return str.replace(/\r?\n/g, "<br>");
 }
 function sanitizeBasicHTML(input) {
@@ -258,6 +243,7 @@ function sanitizeBasicHTML(input) {
         }
         const rawClass = child.getAttribute("class") || "";
         const cleanClass = sanitizeClassValue(rawClass);
+
         if (tag === "A") {
           const href = child.getAttribute("href") || "";
           [...child.attributes].forEach((a) => child.removeAttribute(a.name));
@@ -287,12 +273,15 @@ function highlightHTML(html, query) {
   if (!query || !query.trim()) return html;
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!tokens.length) return html;
+
   const rx = new RegExp("(" + tokens.map(escapeRegex).join("|") + ")", "gi");
   const container = document.createElement("div");
   container.innerHTML = html;
+
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const texts = [];
   let n; while ((n = walker.nextNode())) texts.push(n);
+
   texts.forEach((txt) => {
     const val = txt.nodeValue; if (!rx.test(val)) return;
     const frag = document.createDocumentFragment();
@@ -316,10 +305,13 @@ function parseCompetitionDate(dateStr) {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
   const dateOnly = s.split(/[T\s]/)[0];
+
   const mIso = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (mIso) { const [_, y, mo, d] = mIso; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
+
   const mUk = dateOnly.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mUk) { const [_, d, mo, y] = mUk; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
+
   const parsed = new Date(s);
   if (!isNaN(parsed)) { parsed.setHours(0,0,0,0); return parsed; }
   return null;
@@ -353,47 +345,16 @@ const fuzzyToggle = document.getElementById("fuzzy-toggle");
 const fuzzyHint = document.getElementById("fuzzy-hint");
 document.getElementById("refresh-sheet")?.addEventListener("click", () => loadCSVFile());
 
-// Admin toggle button (injected if a .controls bar exists)
-let adminBtn = null;
-function injectAdminToggle() {
-  const controls = document.querySelector(".controls");
-  if (!controls) return;
-  if (adminBtn) return;
-  adminBtn = document.createElement("button");
-  adminBtn.className = "page-btn";
-  adminBtn.id = "admin-toggle";
-  adminBtn.style.marginLeft = "0.5rem";
-  adminBtn.addEventListener("click", () => {
-    if (!isAdmin()) {
-      const q = new URLSearchParams(location.search);
-      const preset = q.get("admin") === "1";
-      if (preset) { setAdmin(true); updateAdminBtn(); return; }
-      const pass = prompt("Enter admin passphrase:");
-      if (pass && pass === ADMIN_PASSPHRASE) setAdmin(true);
-      else alert("Incorrect passphrase.");
-    } else {
-      setAdmin(false);
-    }
-    updateAdminBtn();
-  });
-  controls.appendChild(adminBtn);
-  updateAdminBtn();
-}
-function updateAdminBtn() {
-  if (!adminBtn) return;
-  adminBtn.textContent = isAdmin() ? "Admin Mode: ON" : "Admin Mode: OFF";
-  adminBtn.style.background = isAdmin() ? "#e0f2fe" : "";
-}
-
+// Modal refs (must match your HTML)
 const modalEl = document.getElementById("record-modal");
 const modalCloseBtn = document.getElementById("modal-close");
 const modalTitle = document.getElementById("modal-title");
 const modalMeta = document.getElementById("modal-meta");
+// We render into these three containers
 const modalDetails = document.getElementById("modal-details");
 const modalRules = document.getElementById("modal-rules");
 const modalProcedures = document.getElementById("modal-procedures");
 let lastFocus = null;
-let currentOpenId = null;
 
 /* ================================================
    Fetch + init
@@ -405,7 +366,7 @@ async function loadCSVFile() {
     const text = await res.text();
     allRecords = parseCSV(text);
 
-    // 🧩 DEBUG TABLE: headers + samples (optional)
+    // (Optional) Debug table of headers + sample values
     if (Array.isArray(allRecords) && allRecords.length > 0) {
       const sampleCount = Math.min(3, allRecords.length);
       const headers = Object.keys(allRecords[0]);
@@ -419,25 +380,22 @@ async function loadCSVFile() {
       console.groupEnd();
     }
 
-    // Build type dropdown
+    // Build the type/category dropdown from your data
     const roles = [...new Set(allRecords.map(r => (getField(r, "type") || "").trim()).filter(Boolean))].sort();
     roleEl.innerHTML = '<option value="">All types</option>';
-    roles.forEach(r => { const opt = document.createElement("option"); opt.value = r; opt.textContent = r; roleEl.appendChild(opt); });
-
-    injectAdminToggle();
+    roles.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r; opt.textContent = r;
+      roleEl.appendChild(opt);
+    });
 
     applyFilters();
 
-    // URL admin hint: ?admin=1
-    if (new URLSearchParams(location.search).get("admin") === "1") {
-      setAdmin(true); updateAdminBtn();
-    }
-
-    // Open deep link if present
+    // Open deep link if present (preserve ?admin=1)
     const hashId = location.hash.replace(/^#/, "");
     if (hashId) {
       const rec = findRecordById(hashId);
-      if (rec) openModalForRecord(rec);
+      if (rec) openModalForRecord(rec, /*pushHash*/ false);
     }
   } catch (err) {
     console.error("Failed to load Google Sheet CSV:", err);
@@ -450,6 +408,7 @@ async function loadCSVFile() {
 ================================================ */
 function applyFilters() {
   const q = currentQuery.trim().toLowerCase();
+
   let temp = currentRole
     ? allRecords.filter(r => (getField(r, "type") || "").toLowerCase() === currentRole.toLowerCase())
     : [...allRecords];
@@ -457,13 +416,17 @@ function applyFilters() {
   if (!q) {
     filtered = temp;
   } else if (!fuzzyEnabled) {
-    filtered = temp.filter(r => Object.values(r).some(val => (val || "").toLowerCase().includes(q)));
+    filtered = temp.filter(r =>
+      Object.values(r).some(val => (val || "").toLowerCase().includes(q))
+    );
   } else {
-    const scored = temp.map(rec => ({ rec, s: scoreRecord(rec, q) }))
-                       .filter(x => x.s.score > 0)
-                       .sort((a, b) => b.s.score - a.s.score);
+    const scored = temp
+      .map(rec => ({ rec, s: scoreRecord(rec, q) }))
+      .filter(x => x.s.score > 0)
+      .sort((a, b) => b.s.score - a.s.score);
     filtered = scored.map(x => ({ ...x.rec, __fuzzy: x.s.fuzzy }));
   }
+
   currentPage = 1;
   render();
 }
@@ -530,7 +493,9 @@ function render() {
   pageInfo.textContent = `Page ${currentPage} / ${pages}`;
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= pages;
-  fuzzyHint.textContent = fuzzyEnabled ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted." : "";
+  fuzzyHint.textContent = fuzzyEnabled
+    ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted."
+    : "";
 
   listEl.querySelectorAll("[data-view]").forEach(btn => {
     btn.addEventListener("click", (e) => {
@@ -542,7 +507,7 @@ function render() {
 }
 
 /* ================================================
-   Modal (config-driven, admin-aware)
+   Modal (config-driven; respects ?admin=1)
 ================================================ */
 function findRecordById(id) {
   if (!id) return null;
@@ -554,7 +519,10 @@ function findRecordById(id) {
 function renderLabelValueList(pairs, query) {
   if (!pairs.length) return `<p class="muted">No information.</p>`;
   const items = pairs.map(({ label, value }) => {
-    const html = highlightHTML(sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(value))), query);
+    const html = highlightHTML(
+      sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(value))),
+      query
+    );
     return `<li><strong>${escapeHTML(label)}:</strong> <span class="kv-value">${html}</span></li>`;
   }).join("");
   return `<ul class="kv-list">${items}</ul>`;
@@ -564,7 +532,6 @@ function buildSectionHTML(rec, section, query) {
   const admin = isAdmin();
 
   if (section.type === "rich") {
-    // Admin can use a different preferred list of fields if provided
     const fieldList = admin && Array.isArray(section.adminFields) && section.adminFields.length
       ? section.adminFields
       : (section.fields || []);
@@ -573,14 +540,17 @@ function buildSectionHTML(rec, section, query) {
       const val = getByHeader(rec, h);
       if (val && String(val).trim() !== "") { content = String(val); break; }
     }
-    const html = highlightHTML(sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(content))), query);
+    const html = highlightHTML(
+      sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(content))),
+      query
+    );
     return html || `<p class="muted">No information.</p>`;
   }
 
   if (section.type === "list") {
     const pairs = [];
     for (const item of (section.items || [])) {
-      if (item.adminOnly && !admin) continue; // hide admin-only in public view
+      if (item.adminOnly && !admin) continue; // hide from public
       const raw = getByHeader(rec, item.header);
       if (raw != null && String(raw).trim() !== "") {
         pairs.push({ label: item.label, value: String(raw) });
@@ -594,26 +564,28 @@ function buildSectionHTML(rec, section, query) {
 
 function openModalForRecord(recRaw, pushHash = true) {
   const n = normalizeRecord(recRaw);
-  currentOpenId = n.id;
 
+  // Title + meta
   modalTitle.textContent = n.title;
   const parts = [];
   if (n.date) parts.push(`📅 ${escapeHTML(n.date)}`);
   if (n.type) parts.push(`🏷️ ${escapeHTML(n.type)}`);
   modalMeta.innerHTML = parts.join(" &nbsp;•&nbsp; ") || "";
 
+  // Map config titles to the three containers present in HTML
   const containers = { "Overview": modalDetails, "Rules": modalRules, "Procedures": modalProcedures };
   MODAL_CONFIG.forEach(section => {
     const target = containers[section.title];
-    if (!target) return;
+    if (!target) return; // skip sections without containers
     target.innerHTML = buildSectionHTML(recRaw, section, currentQuery);
   });
 
+  // Show modal + preserve ?admin=1 in URL
   lastFocus = document.activeElement;
   modalEl.hidden = false;
   document.body.style.overflow = "hidden";
   if (pushHash) {
-    history.pushState({ id: n.id }, "", "#" + n.id);
+    history.pushState({ id: n.id }, "", location.pathname + location.search + "#" + n.id);
   }
   modalCloseBtn?.focus();
 }
@@ -621,8 +593,7 @@ function openModalForRecord(recRaw, pushHash = true) {
 function closeModal() {
   modalEl.hidden = true;
   document.body.style.overflow = "";
-  currentOpenId = null;
-  if (location.hash) history.pushState({}, "", location.pathname + location.search);
+  if (location.hash) history.pushState({}, "", location.pathname + location.search); // keep ?admin=1
   if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
 }
 
@@ -641,7 +612,7 @@ window.addEventListener("hashchange", () => {
 });
 
 /* ================================================
-   Controls
+   Controls: search, filters, pagination, fuzzy toggle
 ================================================ */
 function debounce(fn, ms=200) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 searchEl.addEventListener("input", debounce((e) => { currentQuery = e.target.value; applyFilters(); }));
@@ -666,7 +637,9 @@ document.getElementById("contact-form").addEventListener("submit", async functio
     console.error("Error submitting contact:", err);
   }
 });
-document.getElementById("cta-button").addEventListener("click", () => { alert("Welcome aboard! Let's build your starry website ⭐️"); });
+document.getElementById("cta-button").addEventListener("click", () => {
+  alert("Welcome aboard! Let's build your starry website ⭐️");
+});
 
 /* ================================================
    Boot
