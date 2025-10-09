@@ -10,126 +10,123 @@ function withCacheBuster(url) {
 }
 
 /* =================================================
-   🔧 CONFIG: CARD FIELDS + FULLY CONFIGURABLE MODAL
-   - Edit these to map your sheet and control the modal
+   🔐 ADMIN MODE (POC)
 ================================================= */
+const ADMIN_PASSPHRASE = "letmein"; // ⚠️ Front-end only POC. DO NOT use for real security.
+function isAdmin() {
+  // server may optionally inject window.__ADMIN__ = true; (ignored if absent)
+  if (typeof window.__ADMIN__ === "boolean") return window.__ADMIN__;
+  return localStorage.getItem("admin_mode") === "1";
+}
+function setAdmin(on) {
+  if (on) localStorage.setItem("admin_mode", "1");
+  else localStorage.removeItem("admin_mode");
+  // re-render modal if open
+  if (!modalEl.hidden && currentOpenId) {
+    const rec = findRecordById(currentOpenId);
+    if (rec) openModalForRecord(rec, /*pushHash*/ false);
+  }
+}
 
-// Map your sheet columns to core fields (case-insensitive)
+/* =================================================
+   🔧 CONFIG: CARD FIELDS + CONFIGURABLE MODAL
+================================================= */
 const FIELD_MAP = {
   id:     ["id", "uid", "slug", "competition_id"],
   title:  ["Comp name"],
   date:   ["Date"],
   type:   ["Comp format (scoring type)", "Comp format"],
-  // text shown on the CARD (short summary)
   overview: ["Comp Summary", "Comp Description"],
-  // “Overview” body in MODAL if present (rich text allowed)
   details:  ["Comp Description", "Comp Summary"],
-  // Optional external link field (badge on card) — add if you have it
   link:   ["link", "url", "website", "info_url"]
 };
 
 /*
-  MODAL_CONFIG controls exactly what appears in the modal, section by section.
-  - Each section has:
-      title: "Section Name"
-      type:  "list" | "rich"
-        - "rich": choose the first non-empty field from `fields` and render it as rich HTML (sanitized)
-        - "list": show label:value lines based on the `items` array (each item picks a header from your sheet)
-      fields: [ "Header A", "Header B", ... ]   (rich sections only)
-      items:  [ { label: "Shown label", header: "Exact sheet header" }, ... ]  (list sections only)
-  - Empty items are skipped automatically.
-  - You can add/remove/reorder sections and items freely.
+  MODAL_CONFIG: decide exactly what each audience sees.
+  - type: "rich" (one HTML field) or "list" (label:value items)
+  - For "list" items you can mark adminOnly: true to hide from public.
+  - For "rich" you can set adminFields (fallback list for admins) and fields (for public).
+
+  You can add more sections if you add containers in HTML, or reuse the three we have:
+  Overview -> #modal-details, Rules -> #modal-rules, Procedures -> #modal-procedures
 */
 const MODAL_CONFIG = [
   {
     title: "Overview",
     type: "rich",
-    fields: ["Comp Description", "Comp Summary"] // first non-empty wins
+    fields: ["Comp Description", "Comp Summary"],         // public/fallback
+    adminFields: ["Comp Description", "Comp Summary"]     // admin fallback (same here, but you can change)
   },
   {
     title: "Rules",
     type: "list",
     items: [
+      // Public items
       { label: "Entrant criteria",          header: "Entrant criteria" },
       { label: "Acceptable for Handicap",   header: "Acceptable for Handicap" },
       { label: "Handicap Limit",            header: "Handicap Limit" },
       { label: "Handicap Allowance",        header: "Handicap Allowance" },
       { label: "Divisions",                 header: "Divisions" },
-      { label: "Board Competition",         header: "Board Comp" },
-      { label: "Criteria for Prizewinners", header: "Criteria for Prizewinners" },
-      { label: "2's competition",           header: "2's comp" },
-      { label: "Merit Shield Contributor",  header: "Merit Shield Contributer" },
-      { label: "Trophy",                    header: "Trophy" }
+      // Admin-only items
+      { label: "Board Competition",         header: "Board Comp", adminOnly: true },
+      { label: "Criteria for Prizewinners", header: "Criteria for Prizewinners", adminOnly: true },
+      { label: "2's competition",           header: "2's comp", adminOnly: true },
+      { label: "Merit Shield Contributor",  header: "Merit Shield Contributer", adminOnly: true },
+      { label: "Trophy",                    header: "Trophy", adminOnly: true }
     ]
   },
   {
     title: "Procedures",
     type: "list",
     items: [
+      // Public items
       { label: "Start Sheet",           header: "Start Sheet" },
       { label: "1st & last tee times",  header: "1st & last tee times" },
       { label: "Players per time",      header: "Players per time" },
       { label: "Interval",              header: "Interval (10 Mins)" },
-      { label: "Booking options",       header: "Enable booking options" },
-      { label: "Booking window",        header: "Enabled from and to" },
-      { label: "Zones for drawn comps", header: "Zones for drawn comps" },
-      { label: "Sign in enabled",       header: "Enable Sign in" },
       { label: "Sign in options",       header: "Sign in options" },
-      { label: "Sign in times",         header: "From and to times" },
-      { label: "Sign In Message",       header: "Sign In Message" },
-      { label: "Charges enabled",       header: "Enable Charges" },
-      { label: "Member Fee",            header: "Member Fee" },
-      { label: "When to charge",        header: "When to charge" },
-      { label: "Refund options",        header: "Refund options" },
       { label: "Score entry",           header: "Score entry" },
-      { label: "Leaderboard",           header: "Leaderboard" },
-      { label: "Sweep breakdown",       header: "Sweep breakdown" },
-      { label: "Course Cards",          header: "Course Cards" }
-    ]
-  },
-   {
-    title: "Payments",
-    type: "list",
-    items: [
-      { label: "Criteria for Prizewinners X", header: "Criteria for Prizewinners" },
-      { label: "2's competition X",           header: "2's comp" },
-      { label: "Merit Shield Contributor X",  header: "Merit Shield Contributer" },
-      { label: "Trophy X",                    header: "Trophy" }
+      // Admin-only items (operational/financial bits)
+      { label: "Booking options",       header: "Enable booking options", adminOnly: true },
+      { label: "Booking window",        header: "Enabled from and to", adminOnly: true },
+      { label: "Zones for drawn comps", header: "Zones for drawn comps", adminOnly: true },
+      { label: "Sign in enabled",       header: "Enable Sign in", adminOnly: true },
+      { label: "Sign in times",         header: "From and to times", adminOnly: true },
+      { label: "Sign In Message",       header: "Sign In Message", adminOnly: true },
+      { label: "Charges enabled",       header: "Enable Charges", adminOnly: true },
+      { label: "Member Fee",            header: "Member Fee", adminOnly: true },
+      { label: "When to charge",        header: "When to charge", adminOnly: true },
+      { label: "Refund options",        header: "Refund options", adminOnly: true },
+      { label: "Leaderboard",           header: "Leaderboard", adminOnly: true },
+      { label: "Sweep breakdown",       header: "Sweep breakdown", adminOnly: true },
+      { label: "Course Cards",          header: "Course Cards", adminOnly: true }
     ]
   }
 ];
 
 /* ================================================
-   Robust CSV parser (handles quoted newlines, quotes)
+   Robust CSV parser (handles quoted newlines)
 ================================================ */
 function parseCSV(csv) {
   const rows = [];
-  let row = [];
-  let field = "";
-  let i = 0;
-  let inQuotes = false;
-
+  let row = [], field = "", i = 0, inQuotes = false;
   while (i < csv.length) {
     const ch = csv[i];
-
     if (inQuotes) {
       if (ch === '"') {
-        if (csv[i + 1] === '"') { field += '"'; i += 2; continue; } // escaped quote
-        inQuotes = false; i++; continue; // end quotes
+        if (csv[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
       }
-      field += ch; i++; continue; // literal (incl. \n)
+      field += ch; i++; continue;
     }
-
     if (ch === '"') { inQuotes = true; i++; continue; }
     if (ch === ",") { row.push(field); field = ""; i++; continue; }
     if (ch === "\r") { if (csv[i + 1] === "\n") i++; row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
     if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
-
     field += ch; i++;
   }
   row.push(field);
   if (row.length > 1 || row[0] !== "") rows.push(row);
-
   if (!rows.length) return [];
   const headers = rows[0].map(h => String(h || "").trim());
   return rows.slice(1).map(r => {
@@ -158,7 +155,6 @@ function getField(rec, key) {
   }
   return "";
 }
-// read by exact header label (case-insensitive)
 function getByHeader(rec, header) {
   if (!header) return "";
   const lc = buildLc(rec);
@@ -166,7 +162,7 @@ function getByHeader(rec, header) {
 }
 
 /* ================================================
-   Normalize record for card fields
+   Normalize record for cards
 ================================================ */
 function makeSlug(s) {
   return (s || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
@@ -178,12 +174,11 @@ function normalizeRecord(rec) {
   const type  = getField(rec, "type");
   const overview = getField(rec, "overview");
   const link  = getField(rec, "link");
-  // overview-body (“details”) is handled in modal via MODAL_CONFIG
   return { id, title, date, type, overview, link, __raw: rec };
 }
 
 /* ================================================
-   Search / Fuzzy helpers
+   Search / Fuzzy
 ================================================ */
 function levenshtein(a, b) {
   a = a.toLowerCase(); b = b.toLowerCase();
@@ -198,7 +193,6 @@ function levenshtein(a, b) {
 }
 function scoreRecord(rec, q) {
   const n = normalizeRecord(rec);
-  // Include a bunch of fields for relevance
   const text = `${n.title} ${n.type} ${n.overview} ${Object.values(rec).join(" ")}`.toLowerCase();
   const tokens = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { score: 0, fuzzy: false };
@@ -216,7 +210,7 @@ function scoreRecord(rec, q) {
 }
 
 /* ================================================
-   Highlight (plain text fields for card)
+   Highlight helpers
 ================================================ */
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
@@ -230,10 +224,7 @@ function highlightExact(text, query) {
 }
 
 /* ================================================
-   Safe HTML + HTML-aware highlighting (content)
-   - allows class on whitelisted tags
-   - <a> only with http/https + target/rel
-   - supports <span>
+   Safe HTML pipeline
 ================================================ */
 const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG", "A", "SPAN"]);
 function isSafeHttpUrl(url) {
@@ -250,7 +241,7 @@ function decodeEntities(str) {
 }
 function normalizeMultilinePlainText(str) {
   if (!str) return "";
-  if (/[<][a-zA-Z]/.test(str)) return str; // looks like HTML already
+  if (/[<][a-zA-Z]/.test(str)) return str;
   return str.replace(/\r?\n/g, "<br>");
 }
 function sanitizeBasicHTML(input) {
@@ -263,12 +254,10 @@ function sanitizeBasicHTML(input) {
         const tag = child.tagName.toUpperCase();
         if (!ALLOWED_TAGS.has(tag)) {
           while (child.firstChild) node.insertBefore(child.firstChild, child);
-          node.removeChild(child);
-          return;
+          node.removeChild(child); return;
         }
         const rawClass = child.getAttribute("class") || "";
         const cleanClass = sanitizeClassValue(rawClass);
-
         if (tag === "A") {
           const href = child.getAttribute("href") || "";
           [...child.attributes].forEach((a) => child.removeAttribute(a.name));
@@ -278,8 +267,7 @@ function sanitizeBasicHTML(input) {
             child.setAttribute("rel", "noopener noreferrer");
           } else {
             while (child.firstChild) node.insertBefore(child.firstChild, child);
-            node.removeChild(child);
-            return;
+            node.removeChild(child); return;
           }
           if (cleanClass) child.setAttribute("class", cleanClass);
         } else {
@@ -299,15 +287,12 @@ function highlightHTML(html, query) {
   if (!query || !query.trim()) return html;
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!tokens.length) return html;
-
   const rx = new RegExp("(" + tokens.map(escapeRegex).join("|") + ")", "gi");
   const container = document.createElement("div");
   container.innerHTML = html;
-
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const texts = [];
   let n; while ((n = walker.nextNode())) texts.push(n);
-
   texts.forEach((txt) => {
     const val = txt.nodeValue; if (!rx.test(val)) return;
     const frag = document.createDocumentFragment();
@@ -331,13 +316,10 @@ function parseCompetitionDate(dateStr) {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
   const dateOnly = s.split(/[T\s]/)[0];
-
   const mIso = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (mIso) { const [_, y, mo, d] = mIso; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
-
   const mUk = dateOnly.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mUk) { const [_, d, mo, y] = mUk; const dt = new Date(+y, +mo-1, +d); dt.setHours(0,0,0,0); return dt; }
-
   const parsed = new Date(s);
   if (!isNaN(parsed)) { parsed.setHours(0,0,0,0); return parsed; }
   return null;
@@ -355,7 +337,7 @@ let allRecords = [];
 let filtered = [];
 let currentPage = 1;
 let pageSize = 10;
-let currentRole = ""; // this is "type"
+let currentRole = ""; // filter by "type"
 let currentQuery = "";
 let fuzzyEnabled = false;
 
@@ -371,18 +353,47 @@ const fuzzyToggle = document.getElementById("fuzzy-toggle");
 const fuzzyHint = document.getElementById("fuzzy-hint");
 document.getElementById("refresh-sheet")?.addEventListener("click", () => loadCSVFile());
 
-// Modal refs (must match your HTML)
+// Admin toggle button (injected if a .controls bar exists)
+let adminBtn = null;
+function injectAdminToggle() {
+  const controls = document.querySelector(".controls");
+  if (!controls) return;
+  if (adminBtn) return;
+  adminBtn = document.createElement("button");
+  adminBtn.className = "page-btn";
+  adminBtn.id = "admin-toggle";
+  adminBtn.style.marginLeft = "0.5rem";
+  adminBtn.addEventListener("click", () => {
+    if (!isAdmin()) {
+      const q = new URLSearchParams(location.search);
+      const preset = q.get("admin") === "1";
+      if (preset) { setAdmin(true); updateAdminBtn(); return; }
+      const pass = prompt("Enter admin passphrase:");
+      if (pass && pass === ADMIN_PASSPHRASE) setAdmin(true);
+      else alert("Incorrect passphrase.");
+    } else {
+      setAdmin(false);
+    }
+    updateAdminBtn();
+  });
+  controls.appendChild(adminBtn);
+  updateAdminBtn();
+}
+function updateAdminBtn() {
+  if (!adminBtn) return;
+  adminBtn.textContent = isAdmin() ? "Admin Mode: ON" : "Admin Mode: OFF";
+  adminBtn.style.background = isAdmin() ? "#e0f2fe" : "";
+}
+
 const modalEl = document.getElementById("record-modal");
 const modalCloseBtn = document.getElementById("modal-close");
 const modalTitle = document.getElementById("modal-title");
 const modalMeta = document.getElementById("modal-meta");
-// We will render section HTML into these 3 containers (reusing existing IDs)
-const modalDetails = document.getElementById("modal-details");       // Overview section content
-const modalRules = document.getElementById("modal-rules");           // Rules section content
-const modalProcedures = document.getElementById("modal-procedures"); // Procedures section content
-const modalPayments = document.getElementById("modal-payments"); // Procedures section content
-
+const modalDetails = document.getElementById("modal-details");
+const modalRules = document.getElementById("modal-rules");
+const modalProcedures = document.getElementById("modal-procedures");
 let lastFocus = null;
+let currentOpenId = null;
 
 /* ================================================
    Fetch + init
@@ -394,12 +405,33 @@ async function loadCSVFile() {
     const text = await res.text();
     allRecords = parseCSV(text);
 
+    // 🧩 DEBUG TABLE: headers + samples (optional)
+    if (Array.isArray(allRecords) && allRecords.length > 0) {
+      const sampleCount = Math.min(3, allRecords.length);
+      const headers = Object.keys(allRecords[0]);
+      const debugData = headers.map(h => {
+        const samples = allRecords.slice(0, sampleCount).map(r => (r[h] ?? "").trim()).filter(Boolean);
+        return { Header: h, "Samples (first few)": samples.join(" | ") || "(no values)" };
+      });
+      console.groupCollapsed("📊 Google Sheet Headers & Sample Values");
+      console.table(debugData);
+      console.log(`Detected ${headers.length} columns and ${allRecords.length} rows`);
+      console.groupEnd();
+    }
+
     // Build type dropdown
     const roles = [...new Set(allRecords.map(r => (getField(r, "type") || "").trim()).filter(Boolean))].sort();
     roleEl.innerHTML = '<option value="">All types</option>';
     roles.forEach(r => { const opt = document.createElement("option"); opt.value = r; opt.textContent = r; roleEl.appendChild(opt); });
 
+    injectAdminToggle();
+
     applyFilters();
+
+    // URL admin hint: ?admin=1
+    if (new URLSearchParams(location.search).get("admin") === "1") {
+      setAdmin(true); updateAdminBtn();
+    }
 
     // Open deep link if present
     const hashId = location.hash.replace(/^#/, "");
@@ -418,7 +450,6 @@ async function loadCSVFile() {
 ================================================ */
 function applyFilters() {
   const q = currentQuery.trim().toLowerCase();
-
   let temp = currentRole
     ? allRecords.filter(r => (getField(r, "type") || "").toLowerCase() === currentRole.toLowerCase())
     : [...allRecords];
@@ -433,7 +464,6 @@ function applyFilters() {
                        .sort((a, b) => b.s.score - a.s.score);
     filtered = scored.map(x => ({ ...x.rec, __fuzzy: x.s.fuzzy }));
   }
-
   currentPage = 1;
   render();
 }
@@ -457,18 +487,15 @@ function render() {
     const name = highlightExact(recN.title, currentQuery);
     const role = highlightExact(recN.type || "", currentQuery);
 
-    // Card overview preview (HTML or plain text)
     const decoded = decodeEntities(recN.overview || "");
     const withBreaks = normalizeMultilinePlainText(decoded);
     const safeMsg = sanitizeBasicHTML(withBreaks);
     const msg = highlightHTML(safeMsg, currentQuery);
 
-    // Date & past dimming
     const eventDate = parseCompetitionDate(recN.date);
     const past = isPastDate(eventDate);
     const playedBadge = past ? '<span class="badge past" title="Completed">Played</span>' : "";
 
-    // Optional link badge
     const linkBadge = recN.link && isSafeHttpUrl(recN.link)
       ? `<a class="badge" href="${recN.link}" target="_blank" rel="noopener noreferrer">Link</a>`
       : "";
@@ -505,7 +532,6 @@ function render() {
   nextBtn.disabled = currentPage >= pages;
   fuzzyHint.textContent = fuzzyEnabled ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted." : "";
 
-  // Wire detail buttons
   listEl.querySelectorAll("[data-view]").forEach(btn => {
     btn.addEventListener("click", (e) => {
       const id = e.currentTarget.getAttribute("data-view");
@@ -516,7 +542,7 @@ function render() {
 }
 
 /* ================================================
-   Modal building (config-driven)
+   Modal (config-driven, admin-aware)
 ================================================ */
 function findRecordById(id) {
   if (!id) return null;
@@ -525,7 +551,6 @@ function findRecordById(id) {
   return allRecords.find(r => makeSlug(getField(r, "title") || "competition") === id) || null;
 }
 
-// Build a <ul> of label:value items (sanitized + highlighted)
 function renderLabelValueList(pairs, query) {
   if (!pairs.length) return `<p class="muted">No information.</p>`;
   const items = pairs.map(({ label, value }) => {
@@ -535,11 +560,16 @@ function renderLabelValueList(pairs, query) {
   return `<ul class="kv-list">${items}</ul>`;
 }
 
-// Build inner HTML for a single section based on MODAL_CONFIG
 function buildSectionHTML(rec, section, query) {
+  const admin = isAdmin();
+
   if (section.type === "rich") {
+    // Admin can use a different preferred list of fields if provided
+    const fieldList = admin && Array.isArray(section.adminFields) && section.adminFields.length
+      ? section.adminFields
+      : (section.fields || []);
     let content = "";
-    for (const h of (section.fields || [])) {
+    for (const h of fieldList) {
       const val = getByHeader(rec, h);
       if (val && String(val).trim() !== "") { content = String(val); break; }
     }
@@ -550,6 +580,7 @@ function buildSectionHTML(rec, section, query) {
   if (section.type === "list") {
     const pairs = [];
     for (const item of (section.items || [])) {
+      if (item.adminOnly && !admin) continue; // hide admin-only in public view
       const raw = getByHeader(rec, item.header);
       if (raw != null && String(raw).trim() !== "") {
         pairs.push({ label: item.label, value: String(raw) });
@@ -561,43 +592,36 @@ function buildSectionHTML(rec, section, query) {
   return `<p class="muted">No information.</p>`;
 }
 
-function openModalForRecord(recRaw) {
+function openModalForRecord(recRaw, pushHash = true) {
   const n = normalizeRecord(recRaw);
+  currentOpenId = n.id;
 
-  // Title + meta
   modalTitle.textContent = n.title;
   const parts = [];
   if (n.date) parts.push(`📅 ${escapeHTML(n.date)}`);
   if (n.type) parts.push(`🏷️ ${escapeHTML(n.type)}`);
   modalMeta.innerHTML = parts.join(" &nbsp;•&nbsp; ") || "";
 
-  // We expect 3 containers: Overview (modalDetails), Rules (modalRules), Procedures (modalProcedures)
-  // Map them by title to keep your existing HTML structure.
-  const containers = {
-    "Overview": modalDetails,
-    "Rules": modalRules,
-    "Procedures": modalProcedures,
-    "Payments": modalPayments
-  };
-
-  // Fill each configured section
+  const containers = { "Overview": modalDetails, "Rules": modalRules, "Procedures": modalProcedures };
   MODAL_CONFIG.forEach(section => {
     const target = containers[section.title];
-    if (!target) return; // if you add new sections in config, add a container in HTML or skip
+    if (!target) return;
     target.innerHTML = buildSectionHTML(recRaw, section, currentQuery);
   });
 
-  // Show modal + deep link
   lastFocus = document.activeElement;
   modalEl.hidden = false;
   document.body.style.overflow = "hidden";
-  history.pushState({ id: n.id }, "", "#" + n.id);
+  if (pushHash) {
+    history.pushState({ id: n.id }, "", "#" + n.id);
+  }
   modalCloseBtn?.focus();
 }
 
 function closeModal() {
   modalEl.hidden = true;
   document.body.style.overflow = "";
+  currentOpenId = null;
   if (location.hash) history.pushState({}, "", location.pathname + location.search);
   if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
 }
@@ -613,11 +637,11 @@ window.addEventListener("hashchange", () => {
   const id = location.hash.replace(/^#/, "");
   if (!id) { if (!modalEl.hidden) closeModal(); return; }
   const rec = findRecordById(id);
-  if (rec) openModalForRecord(rec);
+  if (rec) openModalForRecord(rec, /*pushHash*/ false);
 });
 
 /* ================================================
-   Controls: search, filters, pagination, fuzzy toggle
+   Controls
 ================================================ */
 function debounce(fn, ms=200) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 searchEl.addEventListener("input", debounce((e) => { currentQuery = e.target.value; applyFilters(); }));
