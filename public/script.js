@@ -91,10 +91,10 @@ const MODAL_CONFIG = [
     title: "Payments",
     type: "list",
     items: [
-      { label: "Criteria for Prizewinners", header: "Criteria for Prizewinners" },
-      { label: "2's competition",           header: "2's comp" },
-      { label: "Merit Shield Contributor",  header: "Merit Shield Contributer" },
-      { label: "Trophy",                    header: "Trophy" }
+      { label: "Criteria for Prizewinners X", header: "Criteria for Prizewinners" },
+      { label: "2's competition X",           header: "2's comp" },
+      { label: "Merit Shield Contributor X",  header: "Merit Shield Contributer" },
+      { label: "Trophy X",                    header: "Trophy" }
     ]
   }
 ];
