@@ -380,6 +380,7 @@ const modalMeta = document.getElementById("modal-meta");
 const modalDetails = document.getElementById("modal-details");       // Overview section content
 const modalRules = document.getElementById("modal-rules");           // Rules section content
 const modalProcedures = document.getElementById("modal-procedures"); // Procedures section content
+const modalPayments = document.getElementById("modal-payments"); // Procedures section content
 
 let lastFocus = null;
 
