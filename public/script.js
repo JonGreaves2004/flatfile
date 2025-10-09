@@ -9,9 +9,89 @@ function withCacheBuster(url) {
   return u.toString();
 }
 
-/* -------------------------------------------------
+/* =================================================
+   🔧 CONFIG: CARD FIELDS + FULLY CONFIGURABLE MODAL
+   - Edit these to map your sheet and control the modal
+================================================= */
+
+// Map your sheet columns to core fields (case-insensitive)
+const FIELD_MAP = {
+  id:     ["id", "uid", "slug", "competition_id"],
+  title:  ["Comp name"],
+  date:   ["Date"],
+  type:   ["Comp format (scoring type)", "Comp format"],
+  // text shown on the CARD (short summary)
+  overview: ["Comp Summary", "Comp Description"],
+  // “Overview” body in MODAL if present (rich text allowed)
+  details:  ["Comp Description", "Comp Summary"],
+  // Optional external link field (badge on card) — add if you have it
+  link:   ["link", "url", "website", "info_url"]
+};
+
+/*
+  MODAL_CONFIG controls exactly what appears in the modal, section by section.
+  - Each section has:
+      title: "Section Name"
+      type:  "list" | "rich"
+        - "rich": choose the first non-empty field from `fields` and render it as rich HTML (sanitized)
+        - "list": show label:value lines based on the `items` array (each item picks a header from your sheet)
+      fields: [ "Header A", "Header B", ... ]   (rich sections only)
+      items:  [ { label: "Shown label", header: "Exact sheet header" }, ... ]  (list sections only)
+  - Empty items are skipped automatically.
+  - You can add/remove/reorder sections and items freely.
+*/
+const MODAL_CONFIG = [
+  {
+    title: "Overview",
+    type: "rich",
+    fields: ["Comp Description", "Comp Summary"] // first non-empty wins
+  },
+  {
+    title: "Rules",
+    type: "list",
+    items: [
+      { label: "Entrant criteria",          header: "Entrant criteria" },
+      { label: "Acceptable for Handicap",   header: "Acceptable for Handicap" },
+      { label: "Handicap Limit",            header: "Handicap Limit" },
+      { label: "Handicap Allowance",        header: "Handicap Allowance" },
+      { label: "Divisions",                 header: "Divisions" },
+      { label: "Board Competition",         header: "Board Comp" },
+      { label: "Criteria for Prizewinners", header: "Criteria for Prizewinners" },
+      { label: "2's competition",           header: "2's comp" },
+      { label: "Merit Shield Contributor",  header: "Merit Shield Contributer" },
+      { label: "Trophy",                    header: "Trophy" }
+    ]
+  },
+  {
+    title: "Procedures",
+    type: "list",
+    items: [
+      { label: "Start Sheet",           header: "Start Sheet" },
+      { label: "1st & last tee times",  header: "1st & last tee times" },
+      { label: "Players per time",      header: "Players per time" },
+      { label: "Interval",              header: "Interval (10 Mins)" },
+      { label: "Booking options",       header: "Enable booking options" },
+      { label: "Booking window",        header: "Enabled from and to" },
+      { label: "Zones for drawn comps", header: "Zones for drawn comps" },
+      { label: "Sign in enabled",       header: "Enable Sign in" },
+      { label: "Sign in options",       header: "Sign in options" },
+      { label: "Sign in times",         header: "From and to times" },
+      { label: "Sign In Message",       header: "Sign In Message" },
+      { label: "Charges enabled",       header: "Enable Charges" },
+      { label: "Member Fee",            header: "Member Fee" },
+      { label: "When to charge",        header: "When to charge" },
+      { label: "Refund options",        header: "Refund options" },
+      { label: "Score entry",           header: "Score entry" },
+      { label: "Leaderboard",           header: "Leaderboard" },
+      { label: "Sweep breakdown",       header: "Sweep breakdown" },
+      { label: "Course Cards",          header: "Course Cards" }
+    ]
+  }
+];
+
+/* ================================================
    Robust CSV parser (handles quoted newlines, quotes)
--------------------------------------------------- */
+================================================ */
 function parseCSV(csv) {
   const rows = [];
   let row = [];
@@ -49,65 +129,9 @@ function parseCSV(csv) {
   });
 }
 
-/* -------------------------------------------------
-   FIELD MAP for your sheet (case-insensitive)
--------------------------------------------------- */
-const FIELD_MAP = {
-  id:            ["id", "uid", "slug", "competition_id"],
-  title:         ["Comp name"],
-  date:          ["Date"],
-  type:          ["Comp format (scoring type)", "Comp format"],
-
-  // Card preview
-  overview:      ["Comp Summary", "Comp Description"],
-
-  // Overview body in modal (fallback is composed)
-  details:       ["Comp Description", "Comp Summary"],
-
-  // Optional link column if you ever add one
-  link:          ["link", "url", "website", "info_url"]
-};
-
-// These are the exact headers you shared, paired with reader-friendly labels.
-// We’ll render them as “Label: Value” lines in the modal.
-const RULE_ITEMS = [
-  { label:"Entrant criteria",            header:"Entrant criteria" },
-  { label:"Acceptable for Handicap",     header:"Acceptable for Handicap" },
-  { label:"Handicap Limit",              header:"Handicap Limit" },
-  { label:"Handicap Allowance",          header:"Handicap Allowance" },
-  { label:"Divisions",                   header:"Divisions" },
-  { label:"Board Competition",           header:"Board Comp" },
-  { label:"Criteria for Prizewinners",   header:"Criteria for Prizewinners" },
-  { label:"2's competition",             header:"2's comp" },
-  { label:"Merit Shield Contributor",    header:"Merit Shield Contributer" },
-  { label:"Trophy",                      header:"Trophy" }
-];
-
-const PROCEDURE_ITEMS = [
-  { label:"Start Sheet",                 header:"Start Sheet" },
-  { label:"1st & last tee times",       header:"1st & last tee times" },
-  { label:"Players per time",           header:"Players per time" },
-  { label:"Interval",                   header:"Interval (10 Mins)" },
-  { label:"Booking options enabled",    header:"Enable booking options" },
-  { label:"Booking window",             header:"Enabled from and to" },
-  { label:"Zones for drawn comps",      header:"Zones for drawn comps" },
-  { label:"Sign in enabled",            header:"Enable Sign in" },
-  { label:"Sign in options",            header:"Sign in options" },
-  { label:"Sign in times",              header:"From and to times" }, // appears twice in your headers, we’ll show once here
-  { label:"Sign In Message",            header:"Sign In Message" },
-  { label:"Charges enabled",            header:"Enable Charges" },
-  { label:"Member Fee",                 header:"Member Fee" },
-  { label:"When to charge",             header:"When to charge" },
-  { label:"Refund options",             header:"Refund options" },
-  { label:"Score entry",                header:"Score entry" },
-  { label:"Leaderboard",                header:"Leaderboard" },
-  { label:"Sweep breakdown",            header:"Sweep breakdown" },
-  { label:"Course Cards",               header:"Course Cards" }
-];
-
-/* -------------------------------------------------
+/* ================================================
    Case-insensitive field helpers
--------------------------------------------------- */
+================================================ */
 function buildLc(rec) {
   if (rec.__lc) return rec.__lc;
   const m = {};
@@ -115,7 +139,6 @@ function buildLc(rec) {
   rec.__lc = m;
   return m;
 }
-
 function getField(rec, key) {
   const candidates = FIELD_MAP[key] || [];
   const lc = buildLc(rec);
@@ -125,50 +148,33 @@ function getField(rec, key) {
   }
   return "";
 }
-
-// Get a raw value by the exact header text (case-insensitive)
+// read by exact header label (case-insensitive)
 function getByHeader(rec, header) {
   if (!header) return "";
   const lc = buildLc(rec);
   return lc[header.toLowerCase()] ?? "";
 }
 
-/* -------------------------------------------------
-   Build composed blocks & normalized record
--------------------------------------------------- */
-function composeLabeledBlock(rec, labels) {
-  const parts = [];
-  for (const item of labels) {
-    const val = getByHeader(rec, item.header);
-    if (!val) continue;
-    parts.push(`<p><strong>${item.label}:</strong> ${val}</p>`);
-  }
-  return parts.join("");
+/* ================================================
+   Normalize record for card fields
+================================================ */
+function makeSlug(s) {
+  return (s || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
 }
-
 function normalizeRecord(rec) {
   const id    = getField(rec, "id") || makeSlug(getField(rec, "title") || "competition");
   const title = getField(rec, "title") || "Untitled competition";
   const date  = getField(rec, "date");
   const type  = getField(rec, "type");
   const overview = getField(rec, "overview");
-
-  // Overview (modal): prefer “details”; else compose from summary/description
-  let details = getField(rec, "details");
-  if (!details) {
-    details = composeLabeledBlock(rec, [
-      { label:"Summary",     header:"Comp Summary" },
-      { label:"Description", header:"Comp Description" }
-    ]);
-  }
-
-  const link = getField(rec, "link");
-  return { id, title, date, type, overview, details, link, __raw: rec };
+  const link  = getField(rec, "link");
+  // overview-body (“details”) is handled in modal via MODAL_CONFIG
+  return { id, title, date, type, overview, link, __raw: rec };
 }
 
-/* -------------------------------------------------
-   Fuzzy helpers
--------------------------------------------------- */
+/* ================================================
+   Search / Fuzzy helpers
+================================================ */
 function levenshtein(a, b) {
   a = a.toLowerCase(); b = b.toLowerCase();
   const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
@@ -180,10 +186,10 @@ function levenshtein(a, b) {
   }
   return dp[a.length][b.length];
 }
-
 function scoreRecord(rec, q) {
   const n = normalizeRecord(rec);
-  const text = `${n.title} ${n.type} ${n.overview} ${n.details}`.toLowerCase();
+  // Include a bunch of fields for relevance
+  const text = `${n.title} ${n.type} ${n.overview} ${Object.values(rec).join(" ")}`.toLowerCase();
   const tokens = q.toLowerCase().trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return { score: 0, fuzzy: false };
   let score = 0, anyExact = false;
@@ -199,9 +205,9 @@ function scoreRecord(rec, q) {
   return { score, fuzzy: !anyExact && score > 0 };
 }
 
-/* -------------------------------------------------
-   Plain text highlighter (name/type)
--------------------------------------------------- */
+/* ================================================
+   Highlight (plain text fields for card)
+================================================ */
 function escapeHTML(s) {
   return s.replace(/[&<>"']/g, (m) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
 }
@@ -213,14 +219,13 @@ function highlightExact(text, query) {
   return escapeHTML(text).replace(rx, (m) => `<mark>${escapeHTML(m)}</mark>`);
 }
 
-/* -------------------------------------------------
+/* ================================================
    Safe HTML + HTML-aware highlighting (content)
    - allows class on whitelisted tags
    - <a> only with http/https + target/rel
    - supports <span>
--------------------------------------------------- */
+================================================ */
 const ALLOWED_TAGS = new Set(["P", "BR", "B", "I", "EM", "STRONG", "A", "SPAN"]);
-
 function isSafeHttpUrl(url) {
   try { const u = new URL(url, window.location.origin); return u.protocol === "http:" || u.protocol === "https:"; }
   catch { return false; }
@@ -309,9 +314,9 @@ function highlightHTML(html, query) {
   return container.innerHTML;
 }
 
-/* -------------------------------------------------
+/* ================================================
    Date helpers
--------------------------------------------------- */
+================================================ */
 function parseCompetitionDate(dateStr) {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
@@ -333,47 +338,14 @@ function isPastDate(eventDate) {
   return eventDate < today;
 }
 
-/* -------------------------------------------------
-   Utilities
--------------------------------------------------- */
-function makeSlug(s) {
-  return (s || "item").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0,80) || "item";
-}
-
-// Build label:value pairs from an item list and a raw record
-function buildPairs(recRaw, items) {
-  const pairs = [];
-  for (const { label, header } of items) {
-    const val = getByHeader(recRaw, header);
-    if (val != null && String(val).trim() !== "") {
-      pairs.push({ label, value: String(val) });
-    }
-  }
-  return pairs;
-}
-
-// Render pairs as a simple list: <li><strong>Label:</strong> Value</li>
-// Value supports basic HTML via sanitize pipeline.
-function renderLabelValueList(pairs, currentQuery) {
-  if (!pairs.length) return `<p class="muted">No information.</p>`;
-  const items = pairs.map(({ label, value }) => {
-    const valHTML = highlightHTML(
-      sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(value))),
-      currentQuery
-    );
-    return `<li><strong>${escapeHTML(label)}:</strong> <span class="kv-value">${valHTML}</span></li>`;
-  }).join("");
-  return `<ul class="kv-list">${items}</ul>`;
-}
-
-/* -------------------------------------------------
+/* ================================================
    State & DOM refs
--------------------------------------------------- */
+================================================ */
 let allRecords = [];
 let filtered = [];
 let currentPage = 1;
 let pageSize = 10;
-let currentRole = ""; // actually "type" in your data
+let currentRole = ""; // this is "type"
 let currentQuery = "";
 let fuzzyEnabled = false;
 
@@ -389,19 +361,21 @@ const fuzzyToggle = document.getElementById("fuzzy-toggle");
 const fuzzyHint = document.getElementById("fuzzy-hint");
 document.getElementById("refresh-sheet")?.addEventListener("click", () => loadCSVFile());
 
-// Modal refs
+// Modal refs (must match your HTML)
 const modalEl = document.getElementById("record-modal");
 const modalCloseBtn = document.getElementById("modal-close");
 const modalTitle = document.getElementById("modal-title");
 const modalMeta = document.getElementById("modal-meta");
-const modalDetails = document.getElementById("modal-details");
-const modalRules = document.getElementById("modal-rules");
-const modalProcedures = document.getElementById("modal-procedures");
+// We will render section HTML into these 3 containers (reusing existing IDs)
+const modalDetails = document.getElementById("modal-details");       // Overview section content
+const modalRules = document.getElementById("modal-rules");           // Rules section content
+const modalProcedures = document.getElementById("modal-procedures"); // Procedures section content
+
 let lastFocus = null;
 
-/* -------------------------------------------------
+/* ================================================
    Fetch + init
--------------------------------------------------- */
+================================================ */
 async function loadCSVFile() {
   try {
     const res = await fetch(withCacheBuster(SHEET_CSV_URL), CSV_FETCH_OPTS);
@@ -409,16 +383,10 @@ async function loadCSVFile() {
     const text = await res.text();
     allRecords = parseCSV(text);
 
-    // Build the type/category dropdown from your data
-    const roles = [...new Set(allRecords
-      .map(r => (getField(r, "type") || "").trim())
-      .filter(Boolean))].sort();
+    // Build type dropdown
+    const roles = [...new Set(allRecords.map(r => (getField(r, "type") || "").trim()).filter(Boolean))].sort();
     roleEl.innerHTML = '<option value="">All types</option>';
-    roles.forEach(r => {
-      const opt = document.createElement("option");
-      opt.value = r; opt.textContent = r;
-      roleEl.appendChild(opt);
-    });
+    roles.forEach(r => { const opt = document.createElement("option"); opt.value = r; opt.textContent = r; roleEl.appendChild(opt); });
 
     applyFilters();
 
@@ -434,13 +402,12 @@ async function loadCSVFile() {
   }
 }
 
-/* -------------------------------------------------
+/* ================================================
    Filtering + Searching
--------------------------------------------------- */
+================================================ */
 function applyFilters() {
   const q = currentQuery.trim().toLowerCase();
 
-  // Filter by "type"
   let temp = currentRole
     ? allRecords.filter(r => (getField(r, "type") || "").toLowerCase() === currentRole.toLowerCase())
     : [...allRecords];
@@ -448,14 +415,11 @@ function applyFilters() {
   if (!q) {
     filtered = temp;
   } else if (!fuzzyEnabled) {
-    filtered = temp.filter(r =>
-      Object.values(r).some(val => (val || "").toLowerCase().includes(q))
-    );
+    filtered = temp.filter(r => Object.values(r).some(val => (val || "").toLowerCase().includes(q)));
   } else {
-    const scored = temp
-      .map(rec => ({ rec, s: scoreRecord(rec, q) }))
-      .filter(x => x.s.score > 0)
-      .sort((a, b) => b.s.score - a.s.score);
+    const scored = temp.map(rec => ({ rec, s: scoreRecord(rec, q) }))
+                       .filter(x => x.s.score > 0)
+                       .sort((a, b) => b.s.score - a.s.score);
     filtered = scored.map(x => ({ ...x.rec, __fuzzy: x.s.fuzzy }));
   }
 
@@ -463,9 +427,9 @@ function applyFilters() {
   render();
 }
 
-/* -------------------------------------------------
-   Rendering (with pagination)
--------------------------------------------------- */
+/* ================================================
+   Rendering (cards + pagination)
+================================================ */
 function render() {
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -482,7 +446,7 @@ function render() {
     const name = highlightExact(recN.title, currentQuery);
     const role = highlightExact(recN.type || "", currentQuery);
 
-    // Overview preview (HTML or plain text)
+    // Card overview preview (HTML or plain text)
     const decoded = decodeEntities(recN.overview || "");
     const withBreaks = normalizeMultilinePlainText(decoded);
     const safeMsg = sanitizeBasicHTML(withBreaks);
@@ -528,9 +492,7 @@ function render() {
   pageInfo.textContent = `Page ${currentPage} / ${pages}`;
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= pages;
-  fuzzyHint.textContent = fuzzyEnabled
-    ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted."
-    : "";
+  fuzzyHint.textContent = fuzzyEnabled ? "Fuzzy search on: results include approximate matches. Exact hits are highlighted." : "";
 
   // Wire detail buttons
   listEl.querySelectorAll("[data-view]").forEach(btn => {
@@ -542,9 +504,9 @@ function render() {
   });
 }
 
-/* -------------------------------------------------
-   Modal: open/close, populate, deep-link
--------------------------------------------------- */
+/* ================================================
+   Modal building (config-driven)
+================================================ */
 function findRecordById(id) {
   if (!id) return null;
   let hit = allRecords.find(r => getField(r, "id") === id);
@@ -552,34 +514,73 @@ function findRecordById(id) {
   return allRecords.find(r => makeSlug(getField(r, "title") || "competition") === id) || null;
 }
 
+// Build a <ul> of label:value items (sanitized + highlighted)
+function renderLabelValueList(pairs, query) {
+  if (!pairs.length) return `<p class="muted">No information.</p>`;
+  const items = pairs.map(({ label, value }) => {
+    const html = highlightHTML(sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(value))), query);
+    return `<li><strong>${escapeHTML(label)}:</strong> <span class="kv-value">${html}</span></li>`;
+  }).join("");
+  return `<ul class="kv-list">${items}</ul>`;
+}
+
+// Build inner HTML for a single section based on MODAL_CONFIG
+function buildSectionHTML(rec, section, query) {
+  if (section.type === "rich") {
+    let content = "";
+    for (const h of (section.fields || [])) {
+      const val = getByHeader(rec, h);
+      if (val && String(val).trim() !== "") { content = String(val); break; }
+    }
+    const html = highlightHTML(sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(content))), query);
+    return html || `<p class="muted">No information.</p>`;
+  }
+
+  if (section.type === "list") {
+    const pairs = [];
+    for (const item of (section.items || [])) {
+      const raw = getByHeader(rec, item.header);
+      if (raw != null && String(raw).trim() !== "") {
+        pairs.push({ label: item.label, value: String(raw) });
+      }
+    }
+    return renderLabelValueList(pairs, query);
+  }
+
+  return `<p class="muted">No information.</p>`;
+}
+
 function openModalForRecord(recRaw) {
-  const rec = normalizeRecord(recRaw);
+  const n = normalizeRecord(recRaw);
 
   // Title + meta
-  modalTitle.textContent = rec.title;
+  modalTitle.textContent = n.title;
   const parts = [];
-  if (rec.date) parts.push(`📅 ${escapeHTML(rec.date)}`);
-  if (rec.type) parts.push(`🏷️ ${escapeHTML(rec.type)}`);
+  if (n.date) parts.push(`📅 ${escapeHTML(n.date)}`);
+  if (n.type) parts.push(`🏷️ ${escapeHTML(n.type)}`);
   modalMeta.innerHTML = parts.join(" &nbsp;•&nbsp; ") || "";
 
-  // OVERVIEW (rich text)
-  const overviewHTML = sanitizeBasicHTML(normalizeMultilinePlainText(decodeEntities(rec.details || "")));
-  modalDetails.innerHTML = overviewHTML || "<em class='muted'>No overview.</em>";
+  // We expect 3 containers: Overview (modalDetails), Rules (modalRules), Procedures (modalProcedures)
+  // Map them by title to keep your existing HTML structure.
+  const containers = {
+    "Overview": modalDetails,
+    "Rules": modalRules,
+    "Procedures": modalProcedures
+  };
 
-  // RULES (Label: Value list)
-  const rulePairs = buildPairs(rec.__raw, RULE_ITEMS);
-  modalRules.innerHTML = renderLabelValueList(rulePairs, currentQuery);
-
-  // PROCEDURES (Label: Value list)
-  const procPairs = buildPairs(rec.__raw, PROCEDURE_ITEMS);
-  modalProcedures.innerHTML = renderLabelValueList(procPairs, currentQuery);
+  // Fill each configured section
+  MODAL_CONFIG.forEach(section => {
+    const target = containers[section.title];
+    if (!target) return; // if you add new sections in config, add a container in HTML or skip
+    target.innerHTML = buildSectionHTML(recRaw, section, currentQuery);
+  });
 
   // Show modal + deep link
   lastFocus = document.activeElement;
   modalEl.hidden = false;
   document.body.style.overflow = "hidden";
-  history.pushState({ id: rec.id }, "", "#" + rec.id);
-  document.getElementById("modal-close").focus();
+  history.pushState({ id: n.id }, "", "#" + n.id);
+  modalCloseBtn?.focus();
 }
 
 function closeModal() {
@@ -589,7 +590,7 @@ function closeModal() {
   if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
 }
 
-document.getElementById("modal-close")?.addEventListener("click", closeModal);
+modalCloseBtn?.addEventListener("click", closeModal);
 modalEl?.addEventListener("click", (e) => {
   if (e.target.matches(".modal__backdrop") || e.target.dataset.close === "backdrop") closeModal();
 });
@@ -603,9 +604,9 @@ window.addEventListener("hashchange", () => {
   if (rec) openModalForRecord(rec);
 });
 
-/* -------------------------------------------------
+/* ================================================
    Controls: search, filters, pagination, fuzzy toggle
--------------------------------------------------- */
+================================================ */
 function debounce(fn, ms=200) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 searchEl.addEventListener("input", debounce((e) => { currentQuery = e.target.value; applyFilters(); }));
 roleEl.addEventListener("change", (e) => { currentRole = e.target.value; applyFilters(); });
@@ -614,9 +615,9 @@ prevBtn.addEventListener("click", () => { currentPage = Math.max(1, currentPage 
 nextBtn.addEventListener("click", () => { currentPage += 1; render(); });
 fuzzyToggle.addEventListener("change", (e) => { fuzzyEnabled = e.target.checked; applyFilters(); });
 
-/* -------------------------------------------------
+/* ================================================
    Contact + CTA (existing)
--------------------------------------------------- */
+================================================ */
 document.getElementById("contact-form").addEventListener("submit", async function (e) {
   e.preventDefault();
   const formData = { name: this.name.value, email: this.email.value, message: this.message.value };
@@ -631,7 +632,7 @@ document.getElementById("contact-form").addEventListener("submit", async functio
 });
 document.getElementById("cta-button").addEventListener("click", () => { alert("Welcome aboard! Let's build your starry website ⭐️"); });
 
-/* -------------------------------------------------
+/* ================================================
    Boot
--------------------------------------------------- */
+================================================ */
 loadCSVFile();
