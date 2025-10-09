@@ -576,7 +576,8 @@ function openModalForRecord(recRaw) {
   const containers = {
     "Overview": modalDetails,
     "Rules": modalRules,
-    "Procedures": modalProcedures
+    "Procedures": modalProcedures,
+    "Payments": modalPayments
   };
 
   // Fill each configured section
