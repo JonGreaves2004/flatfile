@@ -1,4 +1,4 @@
-// === GOOGLE SHEETS (Published CSV) CONFIG ===
+// === GOOGLE SHEETS (Published CSV) CONFIG =====
 const SHEET_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vTW0dfyxzzttB8ukYBZS8UygpXaRllwKctevJKB4-6mSFst21f36MEBbKa5pHhur5eUFRfr84UfcuGa/pub?gid=0&single=true&output=csv";
 
