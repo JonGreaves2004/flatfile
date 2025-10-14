@@ -2,7 +2,7 @@
 html, body { font-family: 'Segoe UI', system-ui, sans-serif; color:#111; background:#fff; scroll-behavior:smooth; }
 
 /* Navbar */
-.navbar { background:#111; color:#fff; padding:1rem 2rem; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10; }
+.navbar { background:#005668; color:#fff; padding:1rem 2rem; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10; }
 .logo { font-weight:700; }
 .nav-links { list-style:none; display:flex; gap:1rem; }
 .nav-links a { color:#fff; text-decoration:none; font-weight:500; }
@@ -196,3 +196,6 @@ mark { background:#fff59d; padding:0 .1rem; border-radius:3px; }
 }
 
 
+.logo img {
+	height: 5rem	
+}
