@@ -6,7 +6,7 @@
 <title>Competitions Archive</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://www.gstatic.com/charts/loader.js"></script>
 <style>
   /* ============================================================
      CONFIG — edit these two lines for your own sheet
@@ -287,7 +287,6 @@
    ============================================================ */
 const SHEET_ID = "1DJnE1DxBjoyry2YEpI51tps51rth-ue3L7BRKaFfP4w";
 const GID = "0";
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${GID}`;
 
 /* Fields hidden from the normal member-facing view.
    Add ?admin to the URL to reveal these too.
@@ -411,32 +410,49 @@ function buildChips() {
   });
 }
 
-fetch(CSV_URL)
-  .then(res => {
-    if (!res.ok) throw new Error("Network response was not OK");
-    return res.text();
-  })
-  .then(csvText => {
-    const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-    HEADERS = [...new Set(parsed.meta.fields.map(h => h.trim()).filter(h => h.length > 0))];
-    ROWS = parsed.data.map(row => {
-      const clean = {};
-      HEADERS.forEach(h => clean[h] = (row[h] || "").trim());
-      return clean;
-    });
+google.charts.load('current');
+google.charts.setOnLoadCallback(loadRegister);
 
-    TITLE_HEADER = pickHeader(TITLE_HEADER_GUESSES, TITLE_HEADER_OVERRIDE) || HEADERS[0];
-    CATEGORY_HEADER = pickHeader(CATEGORY_HEADER_GUESSES, CATEGORY_HEADER_OVERRIDE)
-      || HEADERS.find(h => h !== TITLE_HEADER && isShortCategoryColumn(h))
-      || null;
+function loadRegister() {
+  const query = new google.visualization.Query(
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${GID}`
+  );
+  query.send(handleQueryResponse);
+}
 
-    buildChips();
-    render();
-  })
-  .catch(err => {
+function handleQueryResponse(response) {
+  if (response.isError()) {
     document.getElementById("list").innerHTML =
-      `<div class="empty">Couldn't load the register. Check the sheet is shared as "Anyone with the link can view", and that SHEET_ID / GID in the code are correct.<br><br>(${escapeHtml(err.message)})</div>`;
-  });
+      `<div class="empty">Couldn't load the register. Check the sheet is shared as "Anyone with the link can view", and that SHEET_ID / GID in the code are correct.<br><br>(${escapeHtml(response.getMessage())})</div>`;
+    return;
+  }
+
+  const dataTable = response.getDataTable();
+  const numCols = dataTable.getNumberOfColumns();
+  const rawHeaders = [];
+  for (let c = 0; c < numCols; c++) rawHeaders.push((dataTable.getColumnLabel(c) || "").trim());
+
+  HEADERS = [...new Set(rawHeaders.filter(h => h.length > 0))];
+
+  ROWS = [];
+  for (let r = 0; r < dataTable.getNumberOfRows(); r++) {
+    const row = {};
+    for (let c = 0; c < numCols; c++) {
+      const h = rawHeaders[c];
+      if (!h) continue;
+      row[h] = (dataTable.getFormattedValue(r, c) || "").trim();
+    }
+    ROWS.push(row);
+  }
+
+  TITLE_HEADER = pickHeader(TITLE_HEADER_GUESSES, TITLE_HEADER_OVERRIDE) || HEADERS[0];
+  CATEGORY_HEADER = pickHeader(CATEGORY_HEADER_GUESSES, CATEGORY_HEADER_OVERRIDE)
+    || HEADERS.find(h => h !== TITLE_HEADER && isShortCategoryColumn(h))
+    || null;
+
+  buildChips();
+  render();
+}
 
 document.getElementById("search").addEventListener("input", render);
 if (IS_ADMIN_VIEW) {
